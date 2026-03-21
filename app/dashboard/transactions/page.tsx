@@ -84,6 +84,53 @@ type Transaction = {
   } | null
 }
 
+type RawTransaction = {
+  id: unknown
+  amount: unknown
+  type: unknown
+  date: unknown
+  category: unknown
+  source: unknown
+  description: unknown
+  asset_id?: unknown
+  reference_id: unknown
+  remarks: unknown
+  account: { id: unknown; name: unknown; type: unknown } | { id: unknown; name: unknown; type: unknown }[] | null
+}
+
+function mapTransaction(row: RawTransaction): Transaction {
+  const account = Array.isArray(row.account) ? row.account[0] ?? null : row.account
+  const normalizedType: TransactionType =
+    row.type === 'income' ||
+    row.type === 'expense' ||
+    row.type === 'transfer_in' ||
+    row.type === 'transfer_out' ||
+    row.type === 'investment_buy' ||
+    row.type === 'investment_sell'
+      ? row.type
+      : 'expense'
+
+  return {
+    id: String(row.id ?? ''),
+    amount: (row.amount as number | string) ?? 0,
+    type: normalizedType,
+    date: String(row.date ?? ''),
+    category: row.category == null ? null : String(row.category),
+    source: row.source == null ? null : String(row.source),
+    description: row.description == null ? null : String(row.description),
+    asset_id: row.asset_id == null ? null : String(row.asset_id),
+    reference_id: row.reference_id == null ? null : String(row.reference_id),
+    remarks: row.remarks == null ? null : String(row.remarks),
+    account: account
+      ? {
+          id: String(account.id ?? ''),
+          name: String(account.name ?? ''),
+          type: String(account.type ?? ''),
+        }
+      : null,
+  }
+}
+
 const transactionTypes: Array<{ label: string; value: 'income' | 'expense' }> = [
   { label: 'Income', value: 'income' },
   { label: 'Expense', value: 'expense' },
@@ -176,7 +223,7 @@ export default function TransactionsPage() {
           setTransactions([])
         } else {
           setAccounts((accountsData ?? []) as Account[])
-          setTransactions((transactionsData ?? []) as Transaction[])
+          setTransactions((transactionsData ?? []).map((row) => mapTransaction(row as RawTransaction)))
         }
       } catch (error) {
         setError(getErrorMessage(error, 'Failed to load transactions.'))

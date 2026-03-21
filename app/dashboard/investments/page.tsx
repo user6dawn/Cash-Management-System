@@ -83,6 +83,58 @@ type AssetDetailEntry = {
   } | null
 }
 
+type RawAssetDetailEntry = {
+  id: unknown
+  quantity: unknown
+  price_per_unit: unknown
+  fees: unknown
+  transaction: {
+    id: unknown
+    type: unknown
+    date: unknown
+    remarks: unknown
+    account: { id: unknown; name: unknown } | { id: unknown; name: unknown }[] | null
+  } | {
+    id: unknown
+    type: unknown
+    date: unknown
+    remarks: unknown
+    account: { id: unknown; name: unknown } | { id: unknown; name: unknown }[] | null
+  }[] | null
+}
+
+function mapAssetDetailEntry(entry: RawAssetDetailEntry): AssetDetailEntry {
+  const transaction = Array.isArray(entry.transaction) ? entry.transaction[0] : entry.transaction
+  const account = transaction
+    ? Array.isArray(transaction.account)
+      ? transaction.account[0] ?? null
+      : transaction.account
+    : null
+
+  return {
+    id: String(entry.id ?? ''),
+    quantity: (entry.quantity as number | string) ?? 0,
+    price_per_unit: (entry.price_per_unit as number | string) ?? 0,
+    fees: (entry.fees as number | string) ?? 0,
+    transaction: transaction
+      ? {
+          id: String(transaction.id ?? ''),
+          type:
+            transaction.type === 'investment_sell' ? 'investment_sell' : 'investment_buy',
+          date: String(transaction.date ?? ''),
+          remarks:
+            transaction.remarks == null ? null : String(transaction.remarks),
+          account: account
+            ? {
+                id: String(account.id ?? ''),
+                name: String(account.name ?? ''),
+              }
+            : null,
+        }
+      : null,
+  }
+}
+
 const currencyFormatter = new Intl.NumberFormat('en-NG', {
   style: 'currency',
   currency: 'NGN',
@@ -236,7 +288,7 @@ export default function InvestmentsPage() {
         setDetailsError(error.message || 'Failed to load investment details.')
         setSelectedAssetEntries([])
       } else {
-        setSelectedAssetEntries((data ?? []) as AssetDetailEntry[])
+        setSelectedAssetEntries((data ?? []).map((entry) => mapAssetDetailEntry(entry as RawAssetDetailEntry)))
       }
     } catch (error) {
       setDetailsError(getErrorMessage(error, 'Failed to load investment details.'))
