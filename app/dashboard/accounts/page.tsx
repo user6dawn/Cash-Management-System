@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { Plus, Loader2, Wallet } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
+import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,7 +50,13 @@ type Account = {
   type: AccountType
   currency: string
   initial_balance: number | string
+  current_balance: number | string
   created_at: string
+}
+
+type AccountBalance = {
+  account_id: string
+  balance: number | string
 }
 
 const accountTypes: Array<{ label: string; value: AccountType }> = [
@@ -66,7 +73,7 @@ const currencyFormatter = new Intl.NumberFormat('en-NG', {
 })
 
 export default function AccountsPage() {
-  const { user, loading } = useAuth()
+  const { user, loading, authError } = useAuth()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -92,17 +99,40 @@ export default function AccountsPage() {
       setAccountsLoading(true)
       setError('')
 
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('id, name, type, currency, initial_balance, created_at')
-        .order('created_at', { ascending: false })
+      try {
+        const supabase = createClient()
+        const [
+          { data: accountsData, error: accountsError },
+          { data: balancesData, error: balancesError },
+        ] = await Promise.all([
+          supabase
+            .from('accounts')
+            .select('id, name, type, currency, initial_balance, created_at')
+            .order('created_at', { ascending: false }),
+          supabase.rpc('get_account_balances'),
+        ])
 
-      if (error) {
-        setError(error.message || 'Failed to load accounts.')
+        if (accountsError || balancesError) {
+          setError(accountsError?.message || balancesError?.message || 'Failed to load accounts.')
+          setAccounts([])
+        } else {
+          const balancesById = new Map(
+            ((balancesData ?? []) as AccountBalance[]).map((account) => [
+              account.account_id,
+              account.balance,
+            ])
+          )
+
+          setAccounts(
+            ((accountsData ?? []) as Omit<Account, 'current_balance'>[]).map((account) => ({
+              ...account,
+              current_balance: balancesById.get(account.id) ?? account.initial_balance,
+            }))
+          )
+        }
+      } catch (error) {
+        setError(getErrorMessage(error, 'Failed to load accounts.'))
         setAccounts([])
-      } else {
-        setAccounts((data ?? []) as Account[])
       }
 
       setAccountsLoading(false)
@@ -137,28 +167,39 @@ export default function AccountsPage() {
     setSubmitting(true)
     setFormError('')
 
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from('accounts')
-      .insert({
-        user_id: user.id,
-        name: name.trim(),
-        type,
-        initial_balance: parsedInitialBalance,
-      })
-      .select('id, name, type, currency, initial_balance, created_at')
-      .single()
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('accounts')
+        .insert({
+          user_id: user.id,
+          name: name.trim(),
+          type,
+          initial_balance: parsedInitialBalance,
+        })
+        .select('id, name, type, currency, initial_balance, created_at')
+        .single()
 
-    if (error) {
-      setFormError(error.message || 'Failed to create account.')
+      if (error) {
+        setFormError(error.message || 'Failed to create account.')
+        setSubmitting(false)
+        return
+      }
+
+      setAccounts((current) => [
+        {
+          ...(data as Omit<Account, 'current_balance'>),
+          current_balance: parsedInitialBalance,
+        },
+        ...current,
+      ])
+      resetForm()
+      setDialogOpen(false)
       setSubmitting(false)
-      return
+    } catch (error) {
+      setFormError(getErrorMessage(error, 'Failed to create account.'))
+      setSubmitting(false)
     }
-
-    setAccounts((current) => [data as Account, ...current])
-    resetForm()
-    setDialogOpen(false)
-    setSubmitting(false)
   }
 
   if (loading || accountsLoading) {
@@ -179,8 +220,8 @@ export default function AccountsPage() {
   return (
     <div className="space-y-8 p-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Accounts</h1>
+        <div className="space-y-2 rounded-2xl border border-[#87E64B]/30 bg-white/85 p-6 shadow-sm shadow-[#87E64B]/10 backdrop-blur">
+          <h1 className="text-3xl font-bold tracking-tight text-[#181818]">Accounts</h1>
           <p className="text-muted-foreground">
             Add and manage the financial accounts tied to your profile.
           </p>
@@ -284,24 +325,30 @@ export default function AccountsPage() {
         </Dialog>
       </div>
 
+      {authError && (
+        <Alert>
+          <AlertDescription>{authError}</AlertDescription>
+        </Alert>
+      )}
+
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
-      <Card>
+      <Card className="border-[#181818]/10 shadow-sm shadow-[#87E64B]/5">
         <CardHeader>
           <CardTitle>Your Accounts</CardTitle>
           <CardDescription>
-            Each account shows its type and starting balance only.
+            Each account shows its type, opening balance, and live current balance.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {accounts.length === 0 ? (
-            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-lg border border-dashed bg-slate-50/60 px-6 text-center dark:bg-slate-900/40">
-              <div className="mb-4 rounded-full bg-slate-100 p-3 dark:bg-slate-800">
-                <Wallet className="h-6 w-6 text-slate-600 dark:text-slate-300" />
+            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-lg border border-dashed border-[#87E64B]/30 bg-[#87E64B]/8 px-6 text-center">
+              <div className="mb-4 rounded-full bg-[#181818] p-3">
+                <Wallet className="h-6 w-6 text-[#87E64B]" />
               </div>
               <h2 className="text-lg font-semibold">No accounts yet</h2>
               <p className="mt-2 max-w-md text-sm text-muted-foreground">
@@ -312,10 +359,11 @@ export default function AccountsPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="bg-[#87E64B]/8 hover:bg-[#87E64B]/12">
                   <TableHead>Account Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Initial Balance</TableHead>
+                  <TableHead className="text-right">Current Balance</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -325,6 +373,9 @@ export default function AccountsPage() {
                     <TableCell className="capitalize">{account.type}</TableCell>
                     <TableCell className="text-right">
                       {currencyFormatter.format(Number(account.initial_balance) || 0)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-[#181818]">
+                      {currencyFormatter.format(Number(account.current_balance) || 0)}
                     </TableCell>
                   </TableRow>
                 ))}

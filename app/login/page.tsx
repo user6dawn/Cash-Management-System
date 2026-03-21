@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { setReauthCookie } from '@/lib/auth/reauth'
+import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,9 +21,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
-  const searchParams = useSearchParams()
   const supabase = createClient()
-  const needsReauth = searchParams.get('reauth') === '1'
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,12 +37,11 @@ export default function LoginPage() {
       if (error) throw error
 
       if (data.user) {
-        setReauthCookie()
         router.push('/dashboard')
         router.refresh()
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to login')
+      setError(getErrorMessage(err, 'Failed to login'))
     } finally {
       setLoading(false)
     }
@@ -52,7 +50,17 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
+        <CardHeader className="space-y-4">
+          <div className="flex justify-center">
+            <Image
+              src="/cashin.svg"
+              alt="CashIn"
+              width={144}
+              height={40}
+              className="h-12 w-auto"
+              priority
+            />
+          </div>
           <CardTitle className="text-2xl font-bold">Login</CardTitle>
           <CardDescription>
             Enter your email and password to access your account
@@ -63,13 +71,6 @@ export default function LoginPage() {
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            {needsReauth && !error && (
-              <Alert>
-                <AlertDescription>
-                  Your session expired after 1 hour. Please confirm your identity by logging in again.
-                </AlertDescription>
               </Alert>
             )}
             <div className="space-y-2">
@@ -102,7 +103,7 @@ export default function LoginPage() {
               Login
             </Button>
             <p className="text-sm text-center text-muted-foreground">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link href="/signup" className="text-primary hover:underline">
                 Sign up
               </Link>

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
+import { getErrorMessage } from '@/lib/errors'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -110,7 +111,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-NG', {
 
 export default function TransactionsPage() {
   const itemsPerPage = 8
-  const { user, loading } = useAuth()
+  const { user, loading, authError } = useAuth()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null)
@@ -158,23 +159,29 @@ export default function TransactionsPage() {
       setPageLoading(true)
       setError('')
 
-      const supabase = createClient()
-      const [{ data: accountsData, error: accountsError }, { data: transactionsData, error: transactionsError }] = await Promise.all([
-        supabase.from('accounts').select('id, name, type').order('name', { ascending: true }),
-        supabase
-          .from('transactions')
-          .select('id, amount, type, date, category, source, description, asset_id, reference_id, remarks, account:accounts(id, name, type)')
-          .order('date', { ascending: false })
-          .order('created_at', { ascending: false }),
-      ])
+      try {
+        const supabase = createClient()
+        const [{ data: accountsData, error: accountsError }, { data: transactionsData, error: transactionsError }] = await Promise.all([
+          supabase.from('accounts').select('id, name, type').order('name', { ascending: true }),
+          supabase
+            .from('transactions')
+            .select('id, amount, type, date, category, source, description, asset_id, reference_id, remarks, account:accounts(id, name, type)')
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false }),
+        ])
 
-      if (accountsError || transactionsError) {
-        setError(accountsError?.message || transactionsError?.message || 'Failed to load transactions.')
+        if (accountsError || transactionsError) {
+          setError(accountsError?.message || transactionsError?.message || 'Failed to load transactions.')
+          setAccounts([])
+          setTransactions([])
+        } else {
+          setAccounts((accountsData ?? []) as Account[])
+          setTransactions((transactionsData ?? []) as Transaction[])
+        }
+      } catch (error) {
+        setError(getErrorMessage(error, 'Failed to load transactions.'))
         setAccounts([])
         setTransactions([])
-      } else {
-        setAccounts((accountsData ?? []) as Account[])
-        setTransactions((transactionsData ?? []) as Transaction[])
       }
 
       setPageLoading(false)
@@ -329,42 +336,47 @@ export default function TransactionsPage() {
     setSubmitting(true)
     setFormError('')
 
-    const supabase = createClient()
-    const selectedAccount = accounts.find((account) => account.id === accountId) || null
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: user.id,
-        account_id: accountId,
-        type,
-        amount: parsedAmount,
-        date: new Date(date).toISOString(),
-        category: category.trim() || null,
-        source: type === 'income' ? source.trim() : null,
-        description: type === 'expense' ? description.trim() : null,
-        asset_id: null,
-        reference_id: null,
-        remarks: remarks.trim() || null,
-      })
-      .select('id, amount, type, date, category, source, description, asset_id, reference_id, remarks')
-      .single()
+    try {
+      const supabase = createClient()
+      const selectedAccount = accounts.find((account) => account.id === accountId) || null
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: user.id,
+          account_id: accountId,
+          type,
+          amount: parsedAmount,
+          date: new Date(date).toISOString(),
+          category: category.trim() || null,
+          source: type === 'income' ? source.trim() : null,
+          description: type === 'expense' ? description.trim() : null,
+          asset_id: null,
+          reference_id: null,
+          remarks: remarks.trim() || null,
+        })
+        .select('id, amount, type, date, category, source, description, asset_id, reference_id, remarks')
+        .single()
 
-    if (error) {
-      setFormError(error.message || 'Failed to create transaction.')
+      if (error) {
+        setFormError(error.message || 'Failed to create transaction.')
+        setSubmitting(false)
+        return
+      }
+
+      setTransactions((current) => [
+        {
+          ...(data as Omit<Transaction, 'account'>),
+          account: selectedAccount,
+        },
+        ...current,
+      ])
+      resetForm()
+      setDialogOpen(false)
       setSubmitting(false)
-      return
+    } catch (error) {
+      setFormError(getErrorMessage(error, 'Failed to create transaction.'))
+      setSubmitting(false)
     }
-
-    setTransactions((current) => [
-      {
-        ...(data as Omit<Transaction, 'account'>),
-        account: selectedAccount,
-      },
-      ...current,
-    ])
-    resetForm()
-    setDialogOpen(false)
-    setSubmitting(false)
   }
 
   const handleCreateTransfer = async (event: FormEvent<HTMLFormElement>) => {
@@ -408,70 +420,75 @@ export default function TransactionsPage() {
     setSubmitting(true)
     setTransferError('')
 
-    const referenceId = crypto.randomUUID()
-    const transferDateIso = new Date(transferDate).toISOString()
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from('transactions')
-      .insert([
-        {
-          user_id: user.id,
-          account_id: fromAccountId,
-          type: 'transfer_out',
-          amount: parsedAmount,
-          date: transferDateIso,
-          category: 'Transfer',
-          source: null,
-          description: null,
-          asset_id: null,
-          reference_id: referenceId,
-          remarks: transferRemarks.trim() || `Transfer to ${toAccount.name}`,
-        },
-        {
-          user_id: user.id,
-          account_id: toAccountId,
-          type: 'transfer_in',
-          amount: parsedAmount,
-          date: transferDateIso,
-          category: 'Transfer',
-          source: null,
-          description: null,
-          asset_id: null,
-          reference_id: referenceId,
-          remarks: transferRemarks.trim() || `Transfer from ${fromAccount.name}`,
-        },
-      ])
-      .select('id, account_id, amount, type, date, category, source, description, asset_id, reference_id, remarks')
+    try {
+      const referenceId = crypto.randomUUID()
+      const transferDateIso = new Date(transferDate).toISOString()
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('transactions')
+        .insert([
+          {
+            user_id: user.id,
+            account_id: fromAccountId,
+            type: 'transfer_out',
+            amount: parsedAmount,
+            date: transferDateIso,
+            category: 'Transfer',
+            source: null,
+            description: null,
+            asset_id: null,
+            reference_id: referenceId,
+            remarks: transferRemarks.trim() || `Transfer to ${toAccount.name}`,
+          },
+          {
+            user_id: user.id,
+            account_id: toAccountId,
+            type: 'transfer_in',
+            amount: parsedAmount,
+            date: transferDateIso,
+            category: 'Transfer',
+            source: null,
+            description: null,
+            asset_id: null,
+            reference_id: referenceId,
+            remarks: transferRemarks.trim() || `Transfer from ${fromAccount.name}`,
+          },
+        ])
+        .select('id, account_id, amount, type, date, category, source, description, asset_id, reference_id, remarks')
 
-    if (error) {
-      setTransferError(error.message || 'Failed to create transfer.')
-      setSubmitting(false)
-      return
-    }
+      if (error) {
+        setTransferError(error.message || 'Failed to create transfer.')
+        setSubmitting(false)
+        return
+      }
 
-    const accountsById = new Map(accounts.map((account) => [account.id, account]))
-    const mappedTransfers = ((data ?? []) as Array<Omit<Transaction, 'account'> & { account_id: string }>).map((transaction) => ({
-      id: transaction.id,
-      amount: transaction.amount,
-      type: transaction.type,
-      date: transaction.date,
-      category: transaction.category,
-      source: transaction.source,
-      description: transaction.description,
-      asset_id: transaction.asset_id,
-      reference_id: transaction.reference_id,
-      remarks: transaction.remarks,
-      account: accountsById.get(transaction.account_id) || null,
-    }))
+      const accountsById = new Map(accounts.map((account) => [account.id, account]))
+      const mappedTransfers = ((data ?? []) as Array<Omit<Transaction, 'account'> & { account_id: string }>).map((transaction) => ({
+        id: transaction.id,
+        amount: transaction.amount,
+        type: transaction.type,
+        date: transaction.date,
+        category: transaction.category,
+        source: transaction.source,
+        description: transaction.description,
+        asset_id: transaction.asset_id,
+        reference_id: transaction.reference_id,
+        remarks: transaction.remarks,
+        account: accountsById.get(transaction.account_id) || null,
+      }))
 
-    setTransactions((current) =>
-      [...mappedTransfers, ...current].sort(
-        (left, right) => new Date(right.date).getTime() - new Date(left.date).getTime()
+      setTransactions((current) =>
+        [...mappedTransfers, ...current].sort(
+          (left, right) => new Date(right.date).getTime() - new Date(left.date).getTime()
+        )
       )
-    )
-    resetTransferForm()
-    setTransferDialogOpen(false)
-    setSubmitting(false)
+      resetTransferForm()
+      setTransferDialogOpen(false)
+      setSubmitting(false)
+    } catch (error) {
+      setTransferError(getErrorMessage(error, 'Failed to create transfer.'))
+      setSubmitting(false)
+    }
   }
 
   if (loading || pageLoading) {
@@ -800,6 +817,12 @@ export default function TransactionsPage() {
           </Dialog>
         </div>
       </div>
+
+      {authError && (
+        <Alert>
+          <AlertDescription>{authError}</AlertDescription>
+        </Alert>
+      )}
 
       {error && (
         <Alert variant="destructive">

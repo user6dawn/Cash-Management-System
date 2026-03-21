@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 
 export const dynamic = 'force-dynamic'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { setReauthCookie } from '@/lib/auth/reauth'
+import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -45,12 +46,11 @@ export default function SignupPage() {
 
         if (dbError) throw dbError
 
-        setReauthCookie()
         router.push('/dashboard')
         router.refresh()
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to sign up')
+      setError(getErrorMessage(err, 'Failed to sign up'))
     } finally {
       setLoading(false)
     }
@@ -59,7 +59,17 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
+        <CardHeader className="space-y-4">
+          <div className="flex justify-center">
+            <Image
+              src="/cashin.svg"
+              alt="CashIn"
+              width={144}
+              height={40}
+              className="h-12 w-auto"
+              priority
+            />
+          </div>
           <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
           <CardDescription>
             Enter your information to get started

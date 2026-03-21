@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { BarChart3, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
+import { getErrorMessage } from '@/lib/errors'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -51,7 +52,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-NG', {
 })
 
 export default function AnalyticsPage() {
-  const { user, loading } = useAuth()
+  const { user, loading, authError } = useAuth()
   const [accountBalances, setAccountBalances] = useState<AccountBalance[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [investments, setInvestments] = useState<InvestmentSummary[]>([])
@@ -75,34 +76,41 @@ export default function AnalyticsPage() {
       setPageLoading(true)
       setError('')
 
-      const supabase = createClient()
-      const [
-        { data: balancesData, error: balancesError },
-        { data: transactionsData, error: transactionsError },
-        { data: investmentsData, error: investmentsError },
-      ] = await Promise.all([
-        supabase.rpc('get_account_balances'),
-        supabase
-          .from('transactions')
-          .select('id, amount, type, date')
-          .order('date', { ascending: false }),
-        supabase.rpc('get_investment_asset_summaries'),
-      ])
+      try {
+        const supabase = createClient()
+        const [
+          { data: balancesData, error: balancesError },
+          { data: transactionsData, error: transactionsError },
+          { data: investmentsData, error: investmentsError },
+        ] = await Promise.all([
+          supabase.rpc('get_account_balances'),
+          supabase
+            .from('transactions')
+            .select('id, amount, type, date')
+            .order('date', { ascending: false }),
+          supabase.rpc('get_investment_asset_summaries'),
+        ])
 
-      if (balancesError || transactionsError || investmentsError) {
-        setError(
-          balancesError?.message ||
-            transactionsError?.message ||
-            investmentsError?.message ||
-            'Failed to load analytics.'
-        )
+        if (balancesError || transactionsError || investmentsError) {
+          setError(
+            balancesError?.message ||
+              transactionsError?.message ||
+              investmentsError?.message ||
+              'Failed to load analytics.'
+          )
+          setAccountBalances([])
+          setTransactions([])
+          setInvestments([])
+        } else {
+          setAccountBalances((balancesData ?? []) as AccountBalance[])
+          setTransactions((transactionsData ?? []) as Transaction[])
+          setInvestments((investmentsData ?? []) as InvestmentSummary[])
+        }
+      } catch (error) {
+        setError(getErrorMessage(error, 'Failed to load analytics.'))
         setAccountBalances([])
         setTransactions([])
         setInvestments([])
-      } else {
-        setAccountBalances((balancesData ?? []) as AccountBalance[])
-        setTransactions((transactionsData ?? []) as Transaction[])
-        setInvestments((investmentsData ?? []) as InvestmentSummary[])
       }
 
       setPageLoading(false)
@@ -169,12 +177,18 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-8 p-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
+      <div className="rounded-2xl border border-[#87E64B]/30 bg-white/85 p-6 shadow-sm shadow-[#87E64B]/10 backdrop-blur">
+        <h1 className="text-3xl font-bold tracking-tight text-[#181818]">Analytics</h1>
         <p className="mt-2 text-muted-foreground">
           A live summary of the accounts, transactions, and investments you&apos;ve added.
         </p>
       </div>
+
+      {authError && (
+        <Alert>
+          <AlertDescription>{authError}</AlertDescription>
+        </Alert>
+      )}
 
       {error && (
         <Alert variant="destructive">
@@ -183,7 +197,7 @@ export default function AnalyticsPage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card className="border-slate-200/80">
+        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
           <CardHeader className="pb-2">
             <CardDescription>Total Balance</CardDescription>
             <CardTitle>{currencyFormatter.format(totalBalance)}</CardTitle>
@@ -194,7 +208,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80">
+        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
           <CardHeader className="pb-2">
             <CardDescription>Total Income</CardDescription>
             <CardTitle>{currencyFormatter.format(totalIncome)}</CardTitle>
@@ -205,7 +219,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80">
+        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
           <CardHeader className="pb-2">
             <CardDescription>Total Expense</CardDescription>
             <CardTitle>{currencyFormatter.format(totalExpense)}</CardTitle>
@@ -216,7 +230,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200/80">
+        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
           <CardHeader className="pb-2">
             <CardDescription>Investment Value</CardDescription>
             <CardTitle>{currencyFormatter.format(totalInvestmentValue)}</CardTitle>
@@ -233,7 +247,7 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
+        <Card className="border-[#181818]/10 shadow-sm shadow-[#87E64B]/5">
           <CardHeader>
             <CardTitle>Top Accounts</CardTitle>
             <CardDescription>
@@ -250,7 +264,7 @@ export default function AnalyticsPage() {
                 {topAccounts.map((account) => (
                   <div
                     key={account.account_id}
-                    className="flex items-center justify-between rounded-lg border bg-slate-50/70 p-4 dark:bg-slate-900/40"
+                    className="flex items-center justify-between rounded-lg border border-[#87E64B]/20 bg-[#87E64B]/8 p-4"
                   >
                     <div>
                       <p className="font-medium">{account.account_name}</p>
@@ -268,7 +282,7 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-[#181818]/10 shadow-sm shadow-[#87E64B]/5">
           <CardHeader>
             <CardTitle>Top Investments</CardTitle>
             <CardDescription>
@@ -285,7 +299,7 @@ export default function AnalyticsPage() {
                 {topInvestments.map((investment) => (
                   <div
                     key={investment.asset_id}
-                    className="flex items-center justify-between rounded-lg border bg-slate-50/70 p-4 dark:bg-slate-900/40"
+                    className="flex items-center justify-between rounded-lg border border-[#87E64B]/20 bg-[#87E64B]/8 p-4"
                   >
                     <div>
                       <p className="font-medium">{investment.name}</p>
@@ -319,7 +333,7 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
-      <Card>
+      <Card className="border-[#181818]/10 shadow-sm shadow-[#87E64B]/5">
         <CardHeader>
           <CardTitle>Recent Activity</CardTitle>
           <CardDescription>
@@ -336,7 +350,7 @@ export default function AnalyticsPage() {
               {recentActivity.map((transaction) => (
                 <div
                   key={transaction.id}
-                  className="flex items-center justify-between rounded-lg border bg-slate-50/70 p-4 dark:bg-slate-900/40"
+                  className="flex items-center justify-between rounded-lg border border-[#87E64B]/20 bg-[#87E64B]/8 p-4"
                 >
                   <div>
                     <p className="font-medium capitalize">

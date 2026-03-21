@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react'
 import { LineChart, Loader2, PlusCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
+import { getErrorMessage } from '@/lib/errors'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -94,7 +95,7 @@ const dateFormatter = new Intl.DateTimeFormat('en-NG', {
 })
 
 export default function InvestmentsPage() {
-  const { user, loading } = useAuth()
+  const { user, loading, authError } = useAuth()
   const [accounts, setAccounts] = useState<Account[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [assetSummaries, setAssetSummaries] = useState<AssetSummary[]>([])
@@ -145,34 +146,41 @@ export default function InvestmentsPage() {
     setPageLoading(true)
     setError('')
 
-    const supabase = createClient()
-    const [
-      { data: accountsData, error: accountsError },
-      { data: assetsData, error: assetsError },
-      { data: summariesData, error: summariesError },
-    ] = await Promise.all([
-      supabase.from('accounts').select('id, name, type').order('name', { ascending: true }),
-      supabase
-        .from('investment_assets')
-        .select('id, name, symbol, type, created_at')
-        .order('created_at', { ascending: false }),
-      supabase.rpc('get_investment_asset_summaries'),
-    ])
+    try {
+      const supabase = createClient()
+      const [
+        { data: accountsData, error: accountsError },
+        { data: assetsData, error: assetsError },
+        { data: summariesData, error: summariesError },
+      ] = await Promise.all([
+        supabase.from('accounts').select('id, name, type').order('name', { ascending: true }),
+        supabase
+          .from('investment_assets')
+          .select('id, name, symbol, type, created_at')
+          .order('created_at', { ascending: false }),
+        supabase.rpc('get_investment_asset_summaries'),
+      ])
 
-    if (accountsError || assetsError || summariesError) {
-      setError(
-        accountsError?.message ||
-          assetsError?.message ||
-          summariesError?.message ||
-          'Failed to load investments.'
-      )
+      if (accountsError || assetsError || summariesError) {
+        setError(
+          accountsError?.message ||
+            assetsError?.message ||
+            summariesError?.message ||
+            'Failed to load investments.'
+        )
+        setAccounts([])
+        setAssets([])
+        setAssetSummaries([])
+      } else {
+        setAccounts((accountsData ?? []) as Account[])
+        setAssets((assetsData ?? []) as Asset[])
+        setAssetSummaries((summariesData ?? []) as AssetSummary[])
+      }
+    } catch (error) {
+      setError(getErrorMessage(error, 'Failed to load investments.'))
       setAccounts([])
       setAssets([])
       setAssetSummaries([])
-    } else {
-      setAccounts((accountsData ?? []) as Account[])
-      setAssets((assetsData ?? []) as Asset[])
-      setAssetSummaries((summariesData ?? []) as AssetSummary[])
     }
 
     setPageLoading(false)
@@ -204,30 +212,35 @@ export default function InvestmentsPage() {
     setDetailsOpen(true)
     setDetailLoading(true)
 
-    const supabase = createClient()
-    const { data, error } = await supabase
-      .from('investment_entries')
-      .select(`
-        id,
-        quantity,
-        price_per_unit,
-        fees,
-        transaction:transactions(
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('investment_entries')
+        .select(`
           id,
-          type,
-          date,
-          remarks,
-          account:accounts(id, name)
-        )
-      `)
-      .eq('asset_id', asset.asset_id)
-      .order('created_at', { ascending: false })
+          quantity,
+          price_per_unit,
+          fees,
+          transaction:transactions(
+            id,
+            type,
+            date,
+            remarks,
+            account:accounts(id, name)
+          )
+        `)
+        .eq('asset_id', asset.asset_id)
+        .order('created_at', { ascending: false })
 
-    if (error) {
-      setDetailsError(error.message || 'Failed to load investment details.')
+      if (error) {
+        setDetailsError(error.message || 'Failed to load investment details.')
+        setSelectedAssetEntries([])
+      } else {
+        setSelectedAssetEntries((data ?? []) as AssetDetailEntry[])
+      }
+    } catch (error) {
+      setDetailsError(getErrorMessage(error, 'Failed to load investment details.'))
       setSelectedAssetEntries([])
-    } else {
-      setSelectedAssetEntries((data ?? []) as AssetDetailEntry[])
     }
 
     setDetailLoading(false)
@@ -615,6 +628,12 @@ export default function InvestmentsPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {authError && (
+        <Alert>
+          <AlertDescription>{authError}</AlertDescription>
+        </Alert>
+      )}
 
       {error && (
         <Alert variant="destructive">

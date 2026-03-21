@@ -1,10 +1,5 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import {
-  getReauthTimestampFromCookie,
-  isReauthExpired,
-  REAUTH_COOKIE,
-} from '@/lib/auth/reauth'
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
@@ -59,23 +54,17 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
-  const reauthTimestamp = getReauthTimestampFromCookie(request.headers.get('cookie') ?? '')
-  const requiresReauth = isReauthExpired(reauthTimestamp)
+  let user = null
 
-  if (user && requiresReauth) {
-    const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('reauth', '1')
+  try {
+    const {
+      data: { user: authenticatedUser },
+    } = await supabase.auth.getUser()
 
-    const redirectResponse = NextResponse.redirect(loginUrl)
-    redirectResponse.cookies.set({
-      name: REAUTH_COOKIE,
-      value: '',
-      expires: new Date(0),
-      path: '/',
-    })
-
-    return redirectResponse
+    user = authenticatedUser
+  } catch (error) {
+    // A transient network reset should not break route rendering for the whole app.
+    return response
   }
 
   if (
@@ -88,11 +77,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (
-    user &&
-    !requiresReauth &&
-    (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')
-  ) {
+  if (user && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')) {
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 

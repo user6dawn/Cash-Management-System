@@ -9,14 +9,14 @@ export const metadata: Metadata = {
   title: 'CashIn',
   description: 'All Your Cash Management Needs',
   icons: {
-    icon: '@/images/favicon.ico',
-    shortcut: '@/images/favicon.ico',
-    apple: '@/images/apple-touch-icon.png',
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
   },
   openGraph: {
     images: [
       {
-        url: '@images/og_default png.png',
+        url: '/og_default png.png',
       },
     ],
   },
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     images: [
       {
-        url: '@images/og_default png.png',
+        url: '/og_default png.png',
       },
     ],
   },

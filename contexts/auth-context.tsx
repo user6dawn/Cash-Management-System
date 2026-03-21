@@ -3,12 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import {
-  clearReauthCookie,
-  getReauthExpiry,
-  getReauthTimestampFromCookie,
-  isReauthExpired,
-} from '@/lib/auth/reauth'
+import { getErrorMessage } from '@/lib/errors'
 
 type UserData = {
   id: string
@@ -22,6 +17,7 @@ type AuthContextType = {
   userData: UserData | null
   loading: boolean
   signOut: () => Promise<{ error: string | null }>
+  authError: string | null
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -30,45 +26,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [userData, setUserData] = useState<UserData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
   const [supabase] = useState(() => createClient())
 
   useEffect(() => {
     let isMounted = true
-    let expiryTimeout: ReturnType<typeof setTimeout> | null = null
-
-    const clearExpiryTimeout = () => {
-      if (expiryTimeout) {
-        clearTimeout(expiryTimeout)
-        expiryTimeout = null
-      }
-    }
-
-    const forceReauth = async () => {
-      clearExpiryTimeout()
-      clearReauthCookie()
-      await supabase.auth.signOut()
-
-      if (isMounted) {
-        setUser(null)
-        setUserData(null)
-        window.location.href = '/login?reauth=1'
-      }
-    }
-
-    const scheduleReauth = () => {
-      clearExpiryTimeout()
-
-      const timestamp = getReauthTimestampFromCookie(document.cookie)
-
-      if (isReauthExpired(timestamp)) {
-        void forceReauth()
-        return
-      }
-
-      expiryTimeout = setTimeout(() => {
-        void forceReauth()
-      }, Math.max(getReauthExpiry(timestamp) - Date.now(), 0))
-    }
 
     const getUser = async () => {
       try {
@@ -81,10 +43,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         setUser(user)
+        setAuthError(null)
 
         if (user) {
-          scheduleReauth()
-
           const { data } = await supabase
             .from('users')
             .select('*')
@@ -97,8 +58,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           setUserData(data)
         } else {
-          clearExpiryTimeout()
-          clearReauthCookie()
           setUserData(null)
         }
       } catch (error) {
@@ -106,10 +65,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        clearExpiryTimeout()
-        clearReauthCookie()
         setUser(null)
         setUserData(null)
+        setAuthError(getErrorMessage(error, 'Unable to verify your session right now.'))
       } finally {
         if (isMounted) {
           setLoading(false)
@@ -128,10 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         setUser(session?.user ?? null)
+        setAuthError(null)
 
         if (session?.user) {
-          scheduleReauth()
-
           const { data } = await supabase
             .from('users')
             .select('*')
@@ -144,8 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           setUserData(data)
         } else {
-          clearExpiryTimeout()
-          clearReauthCookie()
           setUserData(null)
         }
       } catch (error) {
@@ -153,8 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        clearExpiryTimeout()
         setUserData(null)
+        setAuthError(getErrorMessage(error, 'Unable to refresh your session right now.'))
       } finally {
         if (isMounted) {
           setLoading(false)
@@ -164,25 +119,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false
-      clearExpiryTimeout()
       subscription.unsubscribe()
     }
   }, [supabase])
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
+    try {
+      const { error } = await supabase.auth.signOut()
 
-    if (!error) {
-      clearReauthCookie()
-      setUser(null)
-      setUserData(null)
+      if (!error) {
+        setUser(null)
+        setUserData(null)
+        setAuthError(null)
+      }
+
+      return { error: error?.message ?? null }
+    } catch (error) {
+      return {
+        error: getErrorMessage(error, 'Unable to sign out right now.'),
+      }
     }
-
-    return { error: error?.message ?? null }
   }
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading, signOut }}>
+    <AuthContext.Provider value={{ user, userData, loading, signOut, authError }}>
       {children}
     </AuthContext.Provider>
   )
