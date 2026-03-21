@@ -126,7 +126,7 @@ export default function DashboardPage() {
 
   return (
     <div className="p-8 space-y-8">
-      <div className="rounded-2xl border border-[#87E64B]/30 bg-white/85 p-6 shadow-sm shadow-[#87E64B]/10 backdrop-blur">
+      <div className="border border-[#87E64B]/100 bg-[#87E64B]/10 p-4 rounded-lg rounded-2xl ">
         <h1 className="text-3xl font-bold tracking-tight text-[#181818]">
           Welcome, {userData?.full_name || 'User'}
         </h1>

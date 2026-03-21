@@ -219,8 +219,8 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-8 p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-2 rounded-2xl border border-[#87E64B]/30 bg-white/85 p-6 shadow-sm shadow-[#87E64B]/10 backdrop-blur">
+      <div className="text-[#181818] flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between border border-[#87E64B]/100 bg-[#87E64B]/10 p-4 rounded-lg">
+        <div className="">
           <h1 className="text-3xl font-bold tracking-tight text-[#181818]">Accounts</h1>
           <p className="text-muted-foreground">
             Add and manage the financial accounts tied to your profile.

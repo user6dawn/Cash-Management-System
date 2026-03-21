@@ -22,17 +22,25 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+type AuthProviderProps = {
+  children: React.ReactNode
+  initialUser?: User | null
+}
+
+export function AuthProvider({
+  children,
+  initialUser = null,
+}: AuthProviderProps) {
+  const [user, setUser] = useState<User | null>(initialUser)
   const [userData, setUserData] = useState<UserData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(initialUser === null)
   const [authError, setAuthError] = useState<string | null>(null)
   const [supabase] = useState(() => createClient())
 
   useEffect(() => {
     let isMounted = true
 
-    const getUser = async () => {
+    const syncUser = async () => {
       try {
         const {
           data: { user },
@@ -44,22 +52,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setUser(user)
         setAuthError(null)
-
-        if (user) {
-          const { data } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', user.id)
-            .maybeSingle()
-
-          if (!isMounted) {
-            return
-          }
-
-          setUserData(data)
-        } else {
-          setUserData(null)
-        }
       } catch (error) {
         if (!isMounted) {
           return
@@ -75,45 +67,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    getUser()
+    if (initialUser === null) {
+      void syncUser()
+    } else {
+      setLoading(false)
+    }
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        if (!isMounted) {
-          return
-        }
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) {
+        return
+      }
 
-        setUser(session?.user ?? null)
-        setAuthError(null)
+      setUser(session?.user ?? null)
+      setAuthError(null)
+      setLoading(false)
 
-        if (session?.user) {
-          const { data } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle()
-
-          if (!isMounted) {
-            return
-          }
-
-          setUserData(data)
-        } else {
-          setUserData(null)
-        }
-      } catch (error) {
-        if (!isMounted) {
-          return
-        }
-
+      if (!session?.user) {
         setUserData(null)
-        setAuthError(getErrorMessage(error, 'Unable to refresh your session right now.'))
-      } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
       }
     })
 
@@ -121,7 +93,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isMounted = false
       subscription.unsubscribe()
     }
-  }, [supabase])
+  }, [initialUser, supabase])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadUserData = async () => {
+      if (!user) {
+        setUserData(null)
+        return
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, full_name, email, created_at')
+          .eq('id', user.id)
+          .maybeSingle()
+
+        if (!isMounted) {
+          return
+        }
+
+        if (error) {
+          throw error
+        }
+
+        setUserData(data)
+        setAuthError(null)
+      } catch (error) {
+        if (!isMounted) {
+          return
+        }
+
+        setUserData(null)
+        setAuthError(getErrorMessage(error, 'Unable to refresh your session right now.'))
+      }
+    }
+
+    void loadUserData()
+
+    return () => {
+      isMounted = false
+    }
+  }, [supabase, user?.id])
 
   const signOut = async () => {
     try {
