@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { addMonths, format, startOfMonth, startOfWeek, subMonths } from 'date-fns'
 import {
   Area,
@@ -143,6 +143,15 @@ type AnalysisDataset = {
   worst: PeriodMetric | null
   topIncomeSource: BreakdownItem | null
   topExpenseCategory: BreakdownItem | null
+}
+
+type CashflowPeriodMetricRow = {
+  period_start: string
+  period_end: string
+  income: number | string
+  expense: number | string
+  net: number | string
+  transaction_count: number | string
 }
 
 const currencyFormatter = new Intl.NumberFormat('en-NG', {
@@ -453,52 +462,6 @@ function getRateChangeLabel(current: number | null, previous: number | null, per
   return `${delta >= 0 ? '+' : '-'}${Math.abs(delta).toFixed(1)} pts vs previous ${normalizedLabel}`
 }
 
-function buildPeriodMetrics(transactions: Transaction[], period: AnalysisGrouping) {
-  const periods = new Map<string, PeriodMetric>()
-
-  for (const transaction of transactions) {
-    if (transaction.type !== 'income' && transaction.type !== 'expense') {
-      continue
-    }
-
-    const transactionDate = new Date(transaction.date)
-    const amount = Number(transaction.amount || 0)
-
-    if (Number.isNaN(transactionDate.getTime()) || Number.isNaN(amount)) {
-      continue
-    }
-
-    const key = getPeriodKey(transactionDate, period)
-    const existing = periods.get(key) ?? {
-      key,
-      label: formatPeriodLabel(transactionDate, period),
-      shortLabel: formatPeriodShortLabel(transactionDate, period),
-      income: 0,
-      expense: 0,
-      net: 0,
-      transactionCount: 0,
-    }
-
-    if (transaction.type === 'income') {
-      existing.income += amount
-    }
-
-    if (transaction.type === 'expense') {
-      existing.expense += amount
-    }
-
-    existing.transactionCount += 1
-    periods.set(key, existing)
-  }
-
-  return Array.from(periods.values())
-    .map((metric) => ({
-      ...metric,
-      net: metric.income - metric.expense,
-    }))
-    .sort((left, right) => new Date(left.key).getTime() - new Date(right.key).getTime())
-}
-
 function buildBreakdown(transactions: Transaction[], type: 'income' | 'expense') {
   const totals = new Map<string, number>()
 
@@ -590,6 +553,7 @@ function buildAccountMetrics(transactions: Transaction[], accountsById: Map<stri
 }
 
 function buildAnalysisDataset(
+  periodMetrics: PeriodMetric[],
   transactions: Transaction[],
   accountBalances: AccountBalance[],
   config: AnalysisViewConfig
@@ -597,7 +561,7 @@ function buildAnalysisDataset(
   const accountsById = new Map(
     accountBalances.map((account) => [account.account_id, account.account_name])
   )
-  const allMetrics = buildPeriodMetrics(transactions, config.grouping)
+  const allMetrics = periodMetrics
   let metrics = allMetrics
   let latest = metrics.length > 0 ? metrics[metrics.length - 1] : null
   let previous = metrics.length > 1 ? metrics[metrics.length - 2] : null
@@ -697,6 +661,35 @@ function buildAnalysisDataset(
   }
 }
 
+function mapPeriodMetrics(
+  rows: CashflowPeriodMetricRow[],
+  grouping: AnalysisGrouping
+): PeriodMetric[] {
+  return rows
+    .map((row) => {
+      const periodDate = new Date(row.period_start)
+      const income = Number(row.income || 0)
+      const expense = Number(row.expense || 0)
+      const transactionCount = Number(row.transaction_count || 0)
+
+      if (Number.isNaN(periodDate.getTime())) {
+        return null
+      }
+
+      return {
+        key: periodDate.toISOString(),
+        label: formatPeriodLabel(periodDate, grouping),
+        shortLabel: formatPeriodShortLabel(periodDate, grouping),
+        income,
+        expense,
+        net: Number(row.net || income - expense),
+        transactionCount,
+      } as PeriodMetric
+    })
+    .filter((metric): metric is PeriodMetric => Boolean(metric))
+    .sort((left, right) => new Date(left.key).getTime() - new Date(right.key).getTime())
+}
+
 function getRecentActivityTone(type: TransactionType) {
   if (type === 'income' || type === 'transfer_in' || type === 'investment_sell') {
     return 'text-emerald-600'
@@ -723,9 +716,13 @@ function formatRecentActivityAmount(type: TransactionType, amount: number | stri
 
 export default function AnalyticsPage() {
   const { user, loading, authError } = useAuth()
+  const analysisWindowMonths = 6
+  const [activeAnalysisTab, setActiveAnalysisTab] = useState<AnalysisView>('weekly')
   const [accountBalances, setAccountBalances] = useState<AccountBalance[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [investments, setInvestments] = useState<InvestmentSummary[]>([])
+  const [weeklyMetrics, setWeeklyMetrics] = useState<PeriodMetric[]>([])
+  const [monthlyMetrics, setMonthlyMetrics] = useState<PeriodMetric[]>([])
   const [pageLoading, setPageLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -739,6 +736,8 @@ export default function AnalyticsPage() {
         setAccountBalances([])
         setTransactions([])
         setInvestments([])
+        setWeeklyMetrics([])
+        setMonthlyMetrics([])
         setPageLoading(false)
         return
       }
@@ -748,30 +747,48 @@ export default function AnalyticsPage() {
 
       try {
         const supabase = createClient()
+        const transactionsStartDate = startOfMonth(
+          subMonths(new Date(), analysisWindowMonths - 1)
+        ).toISOString()
         const [
           { data: balancesData, error: balancesError },
           { data: transactionsData, error: transactionsError },
           { data: investmentsData, error: investmentsError },
+          { data: weeklyMetricsData, error: weeklyMetricsError },
+          { data: monthlyMetricsData, error: monthlyMetricsError },
         ] = await Promise.all([
           supabase.rpc('get_account_balances'),
           supabase
             .from('transactions')
             .select('id, account_id, amount, type, date, category, source, description')
+            .gte('date', transactionsStartDate)
             .order('date', { ascending: false })
             .order('created_at', { ascending: false }),
           supabase.rpc('get_investment_asset_summaries'),
+          supabase.rpc('get_cashflow_period_metrics', {
+            p_grouping: 'weekly',
+            p_months: analysisWindowMonths,
+          }),
+          supabase.rpc('get_cashflow_period_metrics', {
+            p_grouping: 'monthly',
+            p_months: analysisWindowMonths,
+          }),
         ])
 
-        if (balancesError || transactionsError || investmentsError) {
+        if (balancesError || transactionsError || investmentsError || weeklyMetricsError || monthlyMetricsError) {
           setError(
             balancesError?.message ||
               transactionsError?.message ||
               investmentsError?.message ||
+              weeklyMetricsError?.message ||
+              monthlyMetricsError?.message ||
               'Failed to load analytics.'
           )
           setAccountBalances([])
           setTransactions([])
           setInvestments([])
+          setWeeklyMetrics([])
+          setMonthlyMetrics([])
         } else {
           setAccountBalances((balancesData ?? []) as AccountBalance[])
           setTransactions(
@@ -780,80 +797,122 @@ export default function AnalyticsPage() {
             )
           )
           setInvestments((investmentsData ?? []) as InvestmentSummary[])
+          setWeeklyMetrics(
+            mapPeriodMetrics(
+              (weeklyMetricsData ?? []) as CashflowPeriodMetricRow[],
+              'weekly'
+            )
+          )
+          setMonthlyMetrics(
+            mapPeriodMetrics(
+              (monthlyMetricsData ?? []) as CashflowPeriodMetricRow[],
+              'monthly'
+            )
+          )
         }
       } catch (error) {
         setError(getErrorMessage(error, 'Failed to load analytics.'))
         setAccountBalances([])
         setTransactions([])
         setInvestments([])
+        setWeeklyMetrics([])
+        setMonthlyMetrics([])
       }
 
       setPageLoading(false)
     }
 
     fetchAnalytics()
-  }, [user, loading])
+  }, [user, loading, analysisWindowMonths])
 
-  const totalBalance = accountBalances.reduce(
-    (sum, account) => sum + Number(account.balance || 0),
-    0
+  const totalBalance = useMemo(
+    () => accountBalances.reduce((sum, account) => sum + Number(account.balance || 0), 0),
+    [accountBalances]
   )
 
-  const totalIncome = accountBalances.reduce(
-    (sum, account) => sum + Number(account.income_total || 0),
-    0
+  const totalIncome = useMemo(
+    () => accountBalances.reduce((sum, account) => sum + Number(account.income_total || 0), 0),
+    [accountBalances]
   )
 
-  const totalExpense = accountBalances.reduce(
-    (sum, account) => sum + Number(account.expense_total || 0),
-    0
+  const totalExpense = useMemo(
+    () => accountBalances.reduce((sum, account) => sum + Number(account.expense_total || 0), 0),
+    [accountBalances]
   )
 
   const netSavings = totalIncome - totalExpense
   const overallSavingsRate = getSavingsRate(totalIncome, totalExpense)
 
-  const totalInvestmentValue = investments.reduce(
-    (sum, investment) => sum + Number(investment.current_value || 0),
-    0
+  const totalInvestmentValue = useMemo(
+    () => investments.reduce((sum, investment) => sum + Number(investment.current_value || 0), 0),
+    [investments]
   )
 
-  const totalInvestmentProfit = investments.reduce(
-    (sum, investment) => sum + Number(investment.profit_loss || 0),
-    0
+  const totalInvestmentProfit = useMemo(
+    () => investments.reduce((sum, investment) => sum + Number(investment.profit_loss || 0), 0),
+    [investments]
   )
 
-  const recentActivity = transactions.slice(0, 8)
+  const recentActivity = useMemo(() => transactions.slice(0, 8), [transactions])
 
-  const topAccounts = [...accountBalances]
-    .sort((left, right) => Number(right.balance || 0) - Number(left.balance || 0))
-    .slice(0, 4)
+  const topAccounts = useMemo(
+    () =>
+      [...accountBalances]
+        .sort((left, right) => Number(right.balance || 0) - Number(left.balance || 0))
+        .slice(0, 4),
+    [accountBalances]
+  )
 
-  const topInvestments = [...investments]
-    .sort(
-      (left, right) =>
-        Number(right.current_value || 0) - Number(left.current_value || 0)
-    )
-    .slice(0, 4)
+  const topInvestments = useMemo(
+    () =>
+      [...investments]
+        .sort(
+          (left, right) =>
+            Number(right.current_value || 0) - Number(left.current_value || 0)
+        )
+        .slice(0, 4),
+    [investments]
+  )
 
-  const weeklyAnalysis = buildAnalysisDataset(
-    transactions,
-    accountBalances,
-    analysisViewConfigs.weekly
+  const weeklyAnalysis = useMemo(
+    () =>
+      buildAnalysisDataset(
+        weeklyMetrics,
+        transactions,
+        accountBalances,
+        analysisViewConfigs.weekly
+      ),
+    [weeklyMetrics, transactions, accountBalances]
   )
-  const monthlyAnalysis = buildAnalysisDataset(
-    transactions,
-    accountBalances,
-    analysisViewConfigs.monthly
+  const monthlyAnalysis = useMemo(
+    () =>
+      buildAnalysisDataset(
+        monthlyMetrics,
+        transactions,
+        accountBalances,
+        analysisViewConfigs.monthly
+      ),
+    [monthlyMetrics, transactions, accountBalances]
   )
-  const threeMonthsAnalysis = buildAnalysisDataset(
-    transactions,
-    accountBalances,
-    analysisViewConfigs.threeMonths
+  const threeMonthsAnalysis = useMemo(
+    () =>
+      buildAnalysisDataset(
+        monthlyMetrics,
+        transactions,
+        accountBalances,
+        analysisViewConfigs.threeMonths
+      ),
+    [monthlyMetrics, transactions, accountBalances]
   )
-  const sixMonthsAnalysis = buildAnalysisDataset(
-    transactions,
-    accountBalances,
-    analysisViewConfigs.sixMonths
+  const sixMonthsAnalysis = useMemo(
+    () =>
+      buildAnalysisDataset(
+        monthlyMetrics,
+        transactions,
+        accountBalances,
+        analysisViewConfigs.sixMonths
+      ),
+    [monthlyMetrics, transactions, accountBalances]
   )
 
   const renderAnalysisSection = (
@@ -1572,6 +1631,11 @@ export default function AnalyticsPage() {
           </div>
 
           <Tabs defaultValue="weekly" className="w-full">
+          <Tabs
+            value={activeAnalysisTab}
+            onValueChange={(value) => setActiveAnalysisTab(value as AnalysisView)}
+            className="w-full"
+          >
             <TabsList className="grid h-auto w-full max-w-[640px] grid-cols-2 gap-1 bg-[#87E64B]/15 p-1 md:grid-cols-4">
               <TabsTrigger value="weekly">Weekly</TabsTrigger>
               <TabsTrigger value="monthly">Monthly</TabsTrigger>
@@ -1579,27 +1643,35 @@ export default function AnalyticsPage() {
               <TabsTrigger value="sixMonths">6 Months</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="weekly" className="mt-6">
-              {renderAnalysisSection(weeklyAnalysis, analysisViewConfigs.weekly)}
-            </TabsContent>
+            {activeAnalysisTab === 'weekly' && (
+              <TabsContent value="weekly" className="mt-6">
+                {renderAnalysisSection(weeklyAnalysis, analysisViewConfigs.weekly)}
+              </TabsContent>
+            )}
 
-            <TabsContent value="monthly" className="mt-6">
-              {renderAnalysisSection(monthlyAnalysis, analysisViewConfigs.monthly)}
-            </TabsContent>
+            {activeAnalysisTab === 'monthly' && (
+              <TabsContent value="monthly" className="mt-6">
+                {renderAnalysisSection(monthlyAnalysis, analysisViewConfigs.monthly)}
+              </TabsContent>
+            )}
 
-            <TabsContent value="threeMonths" className="mt-6">
-              {renderAnalysisSection(
-                threeMonthsAnalysis,
-                analysisViewConfigs.threeMonths
-              )}
-            </TabsContent>
+            {activeAnalysisTab === 'threeMonths' && (
+              <TabsContent value="threeMonths" className="mt-6">
+                {renderAnalysisSection(
+                  threeMonthsAnalysis,
+                  analysisViewConfigs.threeMonths
+                )}
+              </TabsContent>
+            )}
 
-            <TabsContent value="sixMonths" className="mt-6">
-              {renderAnalysisSection(
-                sixMonthsAnalysis,
-                analysisViewConfigs.sixMonths
-              )}
-            </TabsContent>
+            {activeAnalysisTab === 'sixMonths' && (
+              <TabsContent value="sixMonths" className="mt-6">
+                {renderAnalysisSection(
+                  sixMonthsAnalysis,
+                  analysisViewConfigs.sixMonths
+                )}
+              </TabsContent>
+            )}
           </Tabs>
         </CardHeader>
       </Card>

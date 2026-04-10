@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import { LineChart, Loader2, PlusCircle } from 'lucide-react'
+import { LineChart, Loader2, PlusCircle, Pencil, Trash2 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
 import { getErrorMessage } from '@/lib/errors'
@@ -159,6 +159,14 @@ export default function InvestmentsPage() {
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
   const [detailsError, setDetailsError] = useState('')
+  const [assetSubmitting, setAssetSubmitting] = useState(false)
+  const [assetDialogOpen, setAssetDialogOpen] = useState(false)
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null)
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null)
+  const [assetFormError, setAssetFormError] = useState('')
+  const [editAssetName, setEditAssetName] = useState('')
+  const [editAssetSymbol, setEditAssetSymbol] = useState('')
+  const [editAssetType, setEditAssetType] = useState('')
   const [selectedAssetSummary, setSelectedAssetSummary] = useState<AssetSummary | null>(null)
   const [selectedAssetEntries, setSelectedAssetEntries] = useState<AssetDetailEntry[]>([])
   const [assetMode, setAssetMode] = useState<'existing' | 'new'>('existing')
@@ -448,6 +456,100 @@ export default function InvestmentsPage() {
     setSubmitting(false)
   }
 
+  const resetAssetForm = () => {
+    setEditingAssetId(null)
+    setAssetFormError('')
+    setEditAssetName('')
+    setEditAssetSymbol('')
+    setEditAssetType('')
+  }
+
+  const openEditAssetDialog = (assetSummary: AssetSummary) => {
+    const matchingAsset = assets.find((asset) => asset.id === assetSummary.asset_id)
+    setEditingAssetId(assetSummary.asset_id)
+    setEditAssetName(assetSummary.name)
+    setEditAssetSymbol(assetSummary.symbol)
+    setEditAssetType(matchingAsset?.type || assetSummary.asset_type)
+    setAssetFormError('')
+    setAssetDialogOpen(true)
+  }
+
+  const handleUpdateAsset = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!editingAssetId) {
+      setAssetFormError('No asset selected.')
+      return
+    }
+
+    if (!editAssetName.trim() || !editAssetSymbol.trim() || !editAssetType.trim()) {
+      setAssetFormError('Name, symbol, and type are required.')
+      return
+    }
+
+    setAssetSubmitting(true)
+    setAssetFormError('')
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('investment_assets')
+        .update({
+          name: editAssetName.trim(),
+          symbol: editAssetSymbol.trim().toUpperCase(),
+          type: editAssetType.trim(),
+        })
+        .eq('id', editingAssetId)
+
+      if (error) {
+        setAssetFormError(error.message || 'Failed to update asset.')
+      } else {
+        setAssetDialogOpen(false)
+        resetAssetForm()
+        await fetchData()
+      }
+    } catch (error) {
+      setAssetFormError(getErrorMessage(error, 'Failed to update asset.'))
+    }
+
+    setAssetSubmitting(false)
+  }
+
+  const handleDeleteAsset = async (assetSummary: AssetSummary) => {
+    const confirmed = window.confirm(
+      `Delete "${assetSummary.name}"? This may fail if transactions depend on it.`
+    )
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingAssetId(assetSummary.asset_id)
+    setError('')
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('investment_assets')
+        .delete()
+        .eq('id', assetSummary.asset_id)
+
+      if (error) {
+        setError(error.message || 'Failed to delete asset.')
+      } else {
+        if (selectedAssetSummary?.asset_id === assetSummary.asset_id) {
+          setDetailsOpen(false)
+          setSelectedAssetSummary(null)
+          setSelectedAssetEntries([])
+        }
+        await fetchData()
+      }
+    } catch (error) {
+      setError(getErrorMessage(error, 'Failed to delete asset.'))
+    }
+
+    setDeletingAssetId(null)
+  }
+
   if (loading || pageLoading) {
     return (
       <div className="space-y-6 p-8">
@@ -693,6 +795,80 @@ export default function InvestmentsPage() {
         </Alert>
       )}
 
+      <Dialog
+        open={assetDialogOpen}
+        onOpenChange={(open) => {
+          setAssetDialogOpen(open)
+          if (!open) {
+            resetAssetForm()
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Asset</DialogTitle>
+            <DialogDescription>
+              Update the asset details used across your investment records.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleUpdateAsset}>
+            {assetFormError && (
+              <Alert variant="destructive">
+                <AlertDescription>{assetFormError}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-asset-name">Asset Name</Label>
+              <Input
+                id="edit-asset-name"
+                value={editAssetName}
+                onChange={(event) => setEditAssetName(event.target.value)}
+                disabled={assetSubmitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-asset-symbol">Symbol</Label>
+              <Input
+                id="edit-asset-symbol"
+                value={editAssetSymbol}
+                onChange={(event) => setEditAssetSymbol(event.target.value)}
+                disabled={assetSubmitting}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-asset-type">Asset Type</Label>
+              <Input
+                id="edit-asset-type"
+                value={editAssetType}
+                onChange={(event) => setEditAssetType(event.target.value)}
+                disabled={assetSubmitting}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setAssetDialogOpen(false)
+                  resetAssetForm()
+                }}
+                disabled={assetSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={assetSubmitting}>
+                {assetSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
@@ -915,71 +1091,99 @@ export default function InvestmentsPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {assetSummaries.map((asset) => (
-                <button
-                  key={asset.asset_id}
-                  type="button"
-                  className="w-full text-left"
-                  onClick={() => openAssetDetails(asset)}
-                >
-                  <Card className="h-full border-slate-200/80 transition-colors hover:border-slate-400">
-                    <CardHeader className="space-y-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <CardTitle className="text-lg">{asset.name}</CardTitle>
-                          <CardDescription>
-                            {asset.symbol} | <span className="capitalize">{asset.asset_type}</span>
-                          </CardDescription>
-                        </div>
-                        <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                          {asset.holding_days} day{asset.holding_days === 1 ? '' : 's'}
-                        </div>
-                      </div>
-                      {asset.description && (
-                        <p className="text-sm text-muted-foreground">{asset.description}</p>
-                      )}
-                    </CardHeader>
-                    <CardContent className="grid gap-4 sm:grid-cols-2">
+                <Card key={asset.asset_id} className="h-full border-slate-200/80">
+                  <CardHeader className="space-y-2">
+                    <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Units Held
-                        </p>
-                        <p className="mt-1 text-2xl font-semibold">
-                          {Number(asset.units_held) || 0}
-                        </p>
+                        <CardTitle className="text-lg">{asset.name}</CardTitle>
+                        <CardDescription>
+                          {asset.symbol} | <span className="capitalize">{asset.asset_type}</span>
+                        </CardDescription>
                       </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Avg Price
-                        </p>
-                        <p className="mt-1 text-2xl font-semibold">
-                          {currencyFormatter.format(Number(asset.average_buy_price) || 0)}
-                        </p>
+                      <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        {asset.holding_days} day{asset.holding_days === 1 ? '' : 's'}
                       </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Current Value
-                        </p>
-                        <p className="mt-1 text-2xl font-semibold">
-                          {currencyFormatter.format(Number(asset.current_value) || 0)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Profit / Loss
-                        </p>
-                        <p
-                          className={`mt-1 text-2xl font-semibold ${
-                            Number(asset.profit_loss) >= 0
-                              ? 'text-emerald-600'
-                              : 'text-rose-600'
-                          }`}
+                    </div>
+                    {asset.description && (
+                      <p className="text-sm text-muted-foreground">{asset.description}</p>
+                    )}
+                  </CardHeader>
+                  <CardContent className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Units Held
+                      </p>
+                      <p className="mt-1 text-2xl font-semibold">
+                        {Number(asset.units_held) || 0}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Avg Price
+                      </p>
+                      <p className="mt-1 text-2xl font-semibold">
+                        {currencyFormatter.format(Number(asset.average_buy_price) || 0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Current Value
+                      </p>
+                      <p className="mt-1 text-2xl font-semibold">
+                        {currencyFormatter.format(Number(asset.current_value) || 0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Profit / Loss
+                      </p>
+                      <p
+                        className={`mt-1 text-2xl font-semibold ${
+                          Number(asset.profit_loss) >= 0
+                            ? 'text-emerald-600'
+                            : 'text-rose-600'
+                        }`}
+                      >
+                        {currencyFormatter.format(Number(asset.profit_loss) || 0)}
+                      </p>
+                    </div>
+                    <div className="sm:col-span-2 flex flex-wrap justify-between gap-2 pt-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => openAssetDetails(asset)}
+                      >
+                        View details
+                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEditAssetDialog(asset)}
+                          disabled={assetSubmitting || deletingAssetId === asset.asset_id}
                         >
-                          {currencyFormatter.format(Number(asset.profit_loss) || 0)}
-                        </p>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDeleteAsset(asset)}
+                          disabled={assetSubmitting || deletingAssetId === asset.asset_id}
+                        >
+                          {deletingAssetId === asset.asset_id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="mr-2 h-4 w-4" />
+                          )}
+                          Delete
+                        </Button>
                       </div>
-                    </CardContent>
-                  </Card>
-                </button>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}

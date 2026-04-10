@@ -10,6 +10,8 @@ import {
   Repeat,
   Search,
   SlidersHorizontal,
+  Pencil,
+  Trash2,
   X,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
@@ -167,6 +169,8 @@ export default function TransactionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
+  const [deletingTransactionId, setDeletingTransactionId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
   const [transferError, setTransferError] = useState('')
@@ -190,50 +194,50 @@ export default function TransactionsPage() {
   const [transferDate, setTransferDate] = useState('')
   const [transferRemarks, setTransferRemarks] = useState('')
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (loading) {
-        return
-      }
-
-      if (!user) {
-        setAccounts([])
-        setTransactions([])
-        setPageLoading(false)
-        return
-      }
-
-      setPageLoading(true)
-      setError('')
-
-      try {
-        const supabase = createClient()
-        const [{ data: accountsData, error: accountsError }, { data: transactionsData, error: transactionsError }] = await Promise.all([
-          supabase.from('accounts').select('id, name, type').order('name', { ascending: true }),
-          supabase
-            .from('transactions')
-            .select('id, amount, type, date, category, source, description, asset_id, reference_id, remarks, account:accounts(id, name, type)')
-            .order('date', { ascending: false })
-            .order('created_at', { ascending: false }),
-        ])
-
-        if (accountsError || transactionsError) {
-          setError(accountsError?.message || transactionsError?.message || 'Failed to load transactions.')
-          setAccounts([])
-          setTransactions([])
-        } else {
-          setAccounts((accountsData ?? []) as Account[])
-          setTransactions((transactionsData ?? []).map((row) => mapTransaction(row as RawTransaction)))
-        }
-      } catch (error) {
-        setError(getErrorMessage(error, 'Failed to load transactions.'))
-        setAccounts([])
-        setTransactions([])
-      }
-
-      setPageLoading(false)
+  const fetchData = async () => {
+    if (loading) {
+      return
     }
 
+    if (!user) {
+      setAccounts([])
+      setTransactions([])
+      setPageLoading(false)
+      return
+    }
+
+    setPageLoading(true)
+    setError('')
+
+    try {
+      const supabase = createClient()
+      const [{ data: accountsData, error: accountsError }, { data: transactionsData, error: transactionsError }] = await Promise.all([
+        supabase.from('accounts').select('id, name, type').order('name', { ascending: true }),
+        supabase
+          .from('transactions')
+          .select('id, amount, type, date, category, source, description, asset_id, reference_id, remarks, account:accounts(id, name, type)')
+          .order('date', { ascending: false })
+          .order('created_at', { ascending: false }),
+      ])
+
+      if (accountsError || transactionsError) {
+        setError(accountsError?.message || transactionsError?.message || 'Failed to load transactions.')
+        setAccounts([])
+        setTransactions([])
+      } else {
+        setAccounts((accountsData ?? []) as Account[])
+        setTransactions((transactionsData ?? []).map((row) => mapTransaction(row as RawTransaction)))
+      }
+    } catch (error) {
+      setError(getErrorMessage(error, 'Failed to load transactions.'))
+      setAccounts([])
+      setTransactions([])
+    }
+
+    setPageLoading(false)
+  }
+
+  useEffect(() => {
     fetchData()
   }, [user, loading])
 
@@ -247,6 +251,7 @@ export default function TransactionsPage() {
     setDescription('')
     setRemarks('')
     setFormError('')
+    setEditingTransactionId(null)
   }
 
   const resetTransferForm = () => {
@@ -345,7 +350,64 @@ export default function TransactionsPage() {
     setDetailsOpen(true)
   }
 
-  const handleCreateTransaction = async (event: FormEvent<HTMLFormElement>) => {
+  const openEditDialog = (transaction: Transaction) => {
+    if (transaction.type !== 'income' && transaction.type !== 'expense') {
+      return
+    }
+
+    setEditingTransactionId(transaction.id)
+    setAccountId(transaction.account?.id || '')
+    setType(transaction.type)
+    setAmount(String(transaction.amount))
+    setDate(transaction.date ? new Date(transaction.date).toISOString().slice(0, 16) : '')
+    setCategory(transaction.category || '')
+    setSource(transaction.source || '')
+    setDescription(transaction.description || '')
+    setRemarks(transaction.remarks || '')
+    setFormError('')
+    setDialogOpen(true)
+  }
+
+  const handleDeleteTransaction = async (transaction: Transaction) => {
+    if (!user) {
+      setError('You must be logged in to delete a transaction.')
+      return
+    }
+
+    const confirmed = window.confirm('Delete this transaction? This action cannot be undone.')
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingTransactionId(transaction.id)
+    setError('')
+
+    try {
+      const supabase = createClient()
+      let query = supabase.from('transactions').delete()
+      if (
+        transaction.reference_id &&
+        (transaction.type === 'transfer_in' || transaction.type === 'transfer_out')
+      ) {
+        query = query.eq('reference_id', transaction.reference_id)
+      } else {
+        query = query.eq('id', transaction.id)
+      }
+
+      const { error } = await query
+      if (error) {
+        setError(error.message || 'Failed to delete transaction.')
+      } else {
+        await fetchData()
+      }
+    } catch (error) {
+      setError(getErrorMessage(error, 'Failed to delete transaction.'))
+    }
+
+    setDeletingTransactionId(null)
+  }
+
+  const handleSaveTransaction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     if (!user) {
@@ -386,42 +448,71 @@ export default function TransactionsPage() {
     try {
       const supabase = createClient()
       const selectedAccount = accounts.find((account) => account.id === accountId) || null
-      const { data, error } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user.id,
-          account_id: accountId,
-          type,
-          amount: parsedAmount,
-          date: new Date(date).toISOString(),
-          category: category.trim() || null,
-          source: type === 'income' ? source.trim() : null,
-          description: type === 'expense' ? description.trim() : null,
-          asset_id: null,
-          reference_id: null,
-          remarks: remarks.trim() || null,
-        })
-        .select('id, amount, type, date, category, source, description, asset_id, reference_id, remarks')
-        .single()
+      if (editingTransactionId) {
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            account_id: accountId,
+            type,
+            amount: parsedAmount,
+            date: new Date(date).toISOString(),
+            category: category.trim() || null,
+            source: type === 'income' ? source.trim() : null,
+            description: type === 'expense' ? description.trim() : null,
+            remarks: remarks.trim() || null,
+          })
+          .eq('id', editingTransactionId)
 
-      if (error) {
-        setFormError(error.message || 'Failed to create transaction.')
-        setSubmitting(false)
-        return
+        if (error) {
+          setFormError(error.message || 'Failed to update transaction.')
+          setSubmitting(false)
+          return
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('transactions')
+          .insert({
+            user_id: user.id,
+            account_id: accountId,
+            type,
+            amount: parsedAmount,
+            date: new Date(date).toISOString(),
+            category: category.trim() || null,
+            source: type === 'income' ? source.trim() : null,
+            description: type === 'expense' ? description.trim() : null,
+            asset_id: null,
+            reference_id: null,
+            remarks: remarks.trim() || null,
+          })
+          .select('id, amount, type, date, category, source, description, asset_id, reference_id, remarks')
+          .single()
+
+        if (error) {
+          setFormError(error.message || 'Failed to create transaction.')
+          setSubmitting(false)
+          return
+        }
+
+        setTransactions((current) => [
+          {
+            ...(data as Omit<Transaction, 'account'>),
+            account: selectedAccount,
+          },
+          ...current,
+        ])
       }
 
-      setTransactions((current) => [
-        {
-          ...(data as Omit<Transaction, 'account'>),
-          account: selectedAccount,
-        },
-        ...current,
-      ])
+      await fetchData()
       resetForm()
       setDialogOpen(false)
       setSubmitting(false)
     } catch (error) {
-      setFormError(getErrorMessage(error, 'Failed to create transaction.'))
+      setFormError(
+        getErrorMessage(
+          error,
+          editingTransactionId ? 'Failed to update transaction.' : 'Failed to create transaction.'
+        )
+      )
       setSubmitting(false)
     }
   }
@@ -706,13 +797,17 @@ export default function TransactionsPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add Transaction</DialogTitle>
+                <DialogTitle>
+                  {editingTransactionId ? 'Edit Transaction' : 'Add Transaction'}
+                </DialogTitle>
                 <DialogDescription>
-                  Save an income or expense entry for one of your accounts.
+                  {editingTransactionId
+                    ? 'Update a transaction entry.'
+                    : 'Save an income or expense entry for one of your accounts.'}
                 </DialogDescription>
               </DialogHeader>
 
-              <form className="space-y-4" onSubmit={handleCreateTransaction}>
+              <form className="space-y-4" onSubmit={handleSaveTransaction}>
                 {formError && (
                   <Alert variant="destructive">
                     <AlertDescription>{formError}</AlertDescription>
@@ -856,7 +951,7 @@ export default function TransactionsPage() {
                   </Button>
                   <Button type="submit" disabled={submitting}>
                     {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Save Transaction
+                    {editingTransactionId ? 'Update Transaction' : 'Save Transaction'}
                   </Button>
                 </DialogFooter>
               </form>
@@ -1138,6 +1233,7 @@ export default function TransactionsPage() {
                       <TableHead>Type</TableHead>
                       <TableHead>Account</TableHead>
                       <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1165,6 +1261,49 @@ export default function TransactionsPage() {
                         </TableCell>
                         <TableCell>{transaction.account?.name || 'Unknown account'}</TableCell>
                         <TableCell>{dateFormatter.format(new Date(transaction.date))}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              title={
+                                transaction.type === 'income' || transaction.type === 'expense'
+                                  ? 'Edit transaction'
+                                  : 'Only income/expense entries can be edited here'
+                              }
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                openEditDialog(transaction)
+                              }}
+                              disabled={
+                                submitting ||
+                                deletingTransactionId === transaction.id ||
+                                (transaction.type !== 'income' && transaction.type !== 'expense')
+                              }
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="destructive"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleDeleteTransaction(transaction)
+                              }}
+                              disabled={submitting || deletingTransactionId === transaction.id}
+                            >
+                              {deletingTransactionId === transaction.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-2 h-4 w-4" />
+                              )}
+                              Delete
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

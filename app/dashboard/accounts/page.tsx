@@ -1,7 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useState } from 'react'
-import { Plus, Loader2, Wallet } from 'lucide-react'
+import { Plus, Loader2, Wallet, Pencil, Trash2 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { createClient } from '@/lib/supabase/client'
 import { getErrorMessage } from '@/lib/errors'
@@ -78,66 +78,68 @@ export default function AccountsPage() {
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null)
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [formError, setFormError] = useState('')
   const [name, setName] = useState('')
   const [type, setType] = useState<AccountType>('cash')
   const [initialBalance, setInitialBalance] = useState('')
 
-  useEffect(() => {
-    const fetchAccounts = async () => {
-      if (loading) {
-        return
-      }
-
-      if (!user) {
-        setAccounts([])
-        setAccountsLoading(false)
-        return
-      }
-
-      setAccountsLoading(true)
-      setError('')
-
-      try {
-        const supabase = createClient()
-        const [
-          { data: accountsData, error: accountsError },
-          { data: balancesData, error: balancesError },
-        ] = await Promise.all([
-          supabase
-            .from('accounts')
-            .select('id, name, type, currency, initial_balance, created_at')
-            .order('created_at', { ascending: false }),
-          supabase.rpc('get_account_balances'),
-        ])
-
-        if (accountsError || balancesError) {
-          setError(accountsError?.message || balancesError?.message || 'Failed to load accounts.')
-          setAccounts([])
-        } else {
-          const balancesById = new Map(
-            ((balancesData ?? []) as AccountBalance[]).map((account) => [
-              account.account_id,
-              account.balance,
-            ])
-          )
-
-          setAccounts(
-            ((accountsData ?? []) as Omit<Account, 'current_balance'>[]).map((account) => ({
-              ...account,
-              current_balance: balancesById.get(account.id) ?? account.initial_balance,
-            }))
-          )
-        }
-      } catch (error) {
-        setError(getErrorMessage(error, 'Failed to load accounts.'))
-        setAccounts([])
-      }
-
-      setAccountsLoading(false)
+  const fetchAccounts = async () => {
+    if (loading) {
+      return
     }
 
+    if (!user) {
+      setAccounts([])
+      setAccountsLoading(false)
+      return
+    }
+
+    setAccountsLoading(true)
+    setError('')
+
+    try {
+      const supabase = createClient()
+      const [
+        { data: accountsData, error: accountsError },
+        { data: balancesData, error: balancesError },
+      ] = await Promise.all([
+        supabase
+          .from('accounts')
+          .select('id, name, type, currency, initial_balance, created_at')
+          .order('created_at', { ascending: false }),
+        supabase.rpc('get_account_balances'),
+      ])
+
+      if (accountsError || balancesError) {
+        setError(accountsError?.message || balancesError?.message || 'Failed to load accounts.')
+        setAccounts([])
+      } else {
+        const balancesById = new Map(
+          ((balancesData ?? []) as AccountBalance[]).map((account) => [
+            account.account_id,
+            account.balance,
+          ])
+        )
+
+        setAccounts(
+          ((accountsData ?? []) as Omit<Account, 'current_balance'>[]).map((account) => ({
+            ...account,
+            current_balance: balancesById.get(account.id) ?? account.initial_balance,
+          }))
+        )
+      }
+    } catch (error) {
+      setError(getErrorMessage(error, 'Failed to load accounts.'))
+      setAccounts([])
+    }
+
+    setAccountsLoading(false)
+  }
+
+  useEffect(() => {
     fetchAccounts()
   }, [user, loading])
 
@@ -146,9 +148,51 @@ export default function AccountsPage() {
     setType('cash')
     setInitialBalance('')
     setFormError('')
+    setEditingAccountId(null)
   }
 
-  const handleCreateAccount = async (event: FormEvent<HTMLFormElement>) => {
+  const openEditDialog = (account: Account) => {
+    setEditingAccountId(account.id)
+    setName(account.name)
+    setType(account.type)
+    setInitialBalance(String(account.initial_balance))
+    setFormError('')
+    setDialogOpen(true)
+  }
+
+  const handleDeleteAccount = async (account: Account) => {
+    if (!user) {
+      setError('You must be logged in to delete an account.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Delete "${account.name}"? This may fail if it has linked records.`
+    )
+    if (!confirmed) {
+      return
+    }
+
+    setDeletingAccountId(account.id)
+    setError('')
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('accounts').delete().eq('id', account.id)
+
+      if (error) {
+        setError(error.message || 'Failed to delete account.')
+      } else {
+        setAccounts((current) => current.filter((currentAccount) => currentAccount.id !== account.id))
+      }
+    } catch (error) {
+      setError(getErrorMessage(error, 'Failed to delete account.'))
+    }
+
+    setDeletingAccountId(null)
+  }
+
+  const handleSaveAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     if (!user) {
@@ -169,35 +213,59 @@ export default function AccountsPage() {
 
     try {
       const supabase = createClient()
-      const { data, error } = await supabase
-        .from('accounts')
-        .insert({
-          user_id: user.id,
-          name: name.trim(),
-          type,
-          initial_balance: parsedInitialBalance,
-        })
-        .select('id, name, type, currency, initial_balance, created_at')
-        .single()
+      if (editingAccountId) {
+        const { error } = await supabase
+          .from('accounts')
+          .update({
+            name: name.trim(),
+            type,
+            initial_balance: parsedInitialBalance,
+          })
+          .eq('id', editingAccountId)
 
-      if (error) {
-        setFormError(error.message || 'Failed to create account.')
-        setSubmitting(false)
-        return
+        if (error) {
+          setFormError(error.message || 'Failed to update account.')
+          setSubmitting(false)
+          return
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('accounts')
+          .insert({
+            user_id: user.id,
+            name: name.trim(),
+            type,
+            initial_balance: parsedInitialBalance,
+          })
+          .select('id, name, type, currency, initial_balance, created_at')
+          .single()
+
+        if (error) {
+          setFormError(error.message || 'Failed to create account.')
+          setSubmitting(false)
+          return
+        }
+
+        setAccounts((current) => [
+          {
+            ...(data as Omit<Account, 'current_balance'>),
+            current_balance: parsedInitialBalance,
+          },
+          ...current,
+        ])
       }
 
-      setAccounts((current) => [
-        {
-          ...(data as Omit<Account, 'current_balance'>),
-          current_balance: parsedInitialBalance,
-        },
-        ...current,
-      ])
+      await fetchAccounts()
       resetForm()
       setDialogOpen(false)
       setSubmitting(false)
     } catch (error) {
-      setFormError(getErrorMessage(error, 'Failed to create account.'))
+      setFormError(
+        getErrorMessage(
+          error,
+          editingAccountId ? 'Failed to update account.' : 'Failed to create account.'
+        )
+      )
       setSubmitting(false)
     }
   }
@@ -244,13 +312,15 @@ export default function AccountsPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Account</DialogTitle>
+            <DialogTitle>{editingAccountId ? 'Edit Account' : 'Add Account'}</DialogTitle>
               <DialogDescription>
-                Create a new account with its opening balance in NGN.
+                {editingAccountId
+                  ? 'Update account details and opening balance.'
+                  : 'Create a new account with its opening balance in NGN.'}
               </DialogDescription>
             </DialogHeader>
 
-            <form className="space-y-4" onSubmit={handleCreateAccount}>
+            <form className="space-y-4" onSubmit={handleSaveAccount}>
               {formError && (
                 <Alert variant="destructive">
                   <AlertDescription>{formError}</AlertDescription>
@@ -317,7 +387,7 @@ export default function AccountsPage() {
                 </Button>
                 <Button type="submit" disabled={submitting}>
                   {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save Account
+                  {editingAccountId ? 'Update Account' : 'Save Account'}
                 </Button>
               </DialogFooter>
             </form>
@@ -364,6 +434,7 @@ export default function AccountsPage() {
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Initial Balance</TableHead>
                   <TableHead className="text-right">Current Balance</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -376,6 +447,34 @@ export default function AccountsPage() {
                     </TableCell>
                     <TableCell className="text-right font-semibold text-[#181818]">
                       {currencyFormatter.format(Number(account.current_balance) || 0)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEditDialog(account)}
+                          disabled={submitting || deletingAccountId === account.id}
+                        >
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDeleteAccount(account)}
+                          disabled={submitting || deletingAccountId === account.id}
+                        >
+                          {deletingAccountId === account.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="mr-2 h-4 w-4" />
+                          )}
+                          Delete
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
