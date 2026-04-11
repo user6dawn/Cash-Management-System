@@ -1630,7 +1630,6 @@ export default function AnalyticsPage() {
             </CardDescription>
           </div>
 
-          <Tabs defaultValue="weekly" className="w-full">
           <Tabs
             value={activeAnalysisTab}
             onValueChange={(value) => setActiveAnalysisTab(value as AnalysisView)}
