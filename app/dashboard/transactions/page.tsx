@@ -795,166 +795,172 @@ export default function TransactionsPage() {
                 Add Transaction
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>
-                  {editingTransactionId ? 'Edit Transaction' : 'Add Transaction'}
-                </DialogTitle>
-                <DialogDescription>
-                  {editingTransactionId
-                    ? 'Update a transaction entry.'
-                    : 'Save an income or expense entry for one of your accounts.'}
-                </DialogDescription>
-              </DialogHeader>
+            <DialogContent className="max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-2xl overflow-hidden p-0">
+              <div className="max-h-[calc(100vh-2rem)] overflow-y-auto p-6">
+                <DialogHeader className="pr-8">
+                  <DialogTitle>
+                    {editingTransactionId ? 'Edit Transaction' : 'Add Transaction'}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {editingTransactionId
+                      ? 'Update a transaction entry.'
+                      : 'Save an income or expense entry for one of your accounts.'}
+                  </DialogDescription>
+                </DialogHeader>
 
-              <form className="space-y-4" onSubmit={handleSaveTransaction}>
-                {formError && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{formError}</AlertDescription>
-                  </Alert>
-                )}
+                <form className="mt-6 space-y-6" onSubmit={handleSaveTransaction}>
+                  {formError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{formError}</AlertDescription>
+                    </Alert>
+                  )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-account">Account</Label>
-                  <Select value={accountId} onValueChange={setAccountId} disabled={submitting}>
-                    <SelectTrigger id="transaction-account">
-                      <SelectValue placeholder="Select an account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {accounts.map((account) => (
-                        <SelectItem key={account.id} value={account.id}>
-                          {account.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="transaction-account">Account</Label>
+                      <Select value={accountId} onValueChange={setAccountId} disabled={submitting}>
+                        <SelectTrigger id="transaction-account">
+                          <SelectValue placeholder="Select an account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-type">Type</Label>
-                  <Select
-                    value={type}
-                    onValueChange={(value: 'income' | 'expense') => setType(value)}
-                    disabled={submitting}
-                  >
-                    <SelectTrigger id="transaction-type">
-                      <SelectValue placeholder="Select transaction type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {transactionTypes.map((transactionType) => (
-                        <SelectItem key={transactionType.value} value={transactionType.value}>
-                          {transactionType.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="transaction-type">Type</Label>
+                      <Select
+                        value={type}
+                        onValueChange={(value: 'income' | 'expense') => setType(value)}
+                        disabled={submitting}
+                      >
+                        <SelectTrigger id="transaction-type">
+                          <SelectValue placeholder="Select transaction type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {transactionTypes.map((transactionType) => (
+                            <SelectItem key={transactionType.value} value={transactionType.value}>
+                              {transactionType.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-amount">Amount</Label>
-                  <Input
-                    id="transaction-amount"
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    required
-                    disabled={submitting}
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="transaction-amount">Amount</Label>
+                      <Input
+                        id="transaction-amount"
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={amount}
+                        onChange={(event) => setAmount(event.target.value)}
+                        required
+                        disabled={submitting}
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-date">Date</Label>
-                  <Input
-                    id="transaction-date"
-                    type="datetime-local"
-                    value={date}
-                    onChange={(event) => setDate(event.target.value)}
-                    required
-                    disabled={submitting}
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="transaction-date">Date</Label>
+                      <Input
+                        id="transaction-date"
+                        type="datetime-local"
+                        value={date}
+                        onChange={(event) => setDate(event.target.value)}
+                        required
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="transaction-category">Category</Label>
-                <Input
-                  id="transaction-category"
-                  list="transaction-category-suggestions"
-                  placeholder="Optional category"
-                  value={category}
-                  onChange={(event) => setCategory(event.target.value)}
-                  disabled={submitting}
-                />
-                <datalist id="transaction-category-suggestions">
-                  {categorySuggestions.map((option) => (
-                    <option key={option} value={option} />
-                  ))}
-                </datalist>
-              </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="transaction-category">Category</Label>
+                      <Input
+                        id="transaction-category"
+                        list="transaction-category-suggestions"
+                        placeholder="Optional category"
+                        value={category}
+                        onChange={(event) => setCategory(event.target.value)}
+                        disabled={submitting}
+                      />
+                      <datalist id="transaction-category-suggestions">
+                        {categorySuggestions.map((option) => (
+                          <option key={option} value={option} />
+                        ))}
+                      </datalist>
+                    </div>
 
-              {type === 'income' ? (
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-source">Source</Label>
-                  <Input
-                    id="transaction-source"
-                    list="transaction-source-suggestions"
-                    placeholder="Salary, freelance, interest..."
-                    value={source}
-                    onChange={(event) => setSource(event.target.value)}
-                    required
-                    disabled={submitting}
-                  />
-                  <datalist id="transaction-source-suggestions">
-                    {sourceSuggestions.map((option) => (
-                      <option key={option} value={option} />
-                    ))}
-                  </datalist>
-                </div>
-              ) : (
+                    {type === 'income' ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="transaction-source">Source</Label>
+                        <Input
+                          id="transaction-source"
+                          list="transaction-source-suggestions"
+                          placeholder="Salary, freelance, interest..."
+                          value={source}
+                          onChange={(event) => setSource(event.target.value)}
+                          required
+                          disabled={submitting}
+                        />
+                        <datalist id="transaction-source-suggestions">
+                          {sourceSuggestions.map((option) => (
+                            <option key={option} value={option} />
+                          ))}
+                        </datalist>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label htmlFor="transaction-description">Description</Label>
+                        <Input
+                          id="transaction-description"
+                          placeholder="Groceries, transport, rent..."
+                          value={description}
+                          onChange={(event) => setDescription(event.target.value)}
+                          required
+                          disabled={submitting}
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="transaction-description">Description</Label>
+                    <Label htmlFor="transaction-remarks">Remarks</Label>
                     <Input
-                      id="transaction-description"
-                      placeholder="Groceries, transport, rent..."
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      required
+                      id="transaction-remarks"
+                      placeholder="Optional remarks"
+                      value={remarks}
+                      onChange={(event) => setRemarks(event.target.value)}
                       disabled={submitting}
                     />
                   </div>
-                )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="transaction-remarks">Remarks</Label>
-                  <Input
-                    id="transaction-remarks"
-                    placeholder="Optional remarks"
-                    value={remarks}
-                    onChange={(event) => setRemarks(event.target.value)}
-                    disabled={submitting}
-                  />
-                </div>
-
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      resetForm()
-                      setDialogOpen(false)
-                    }}
-                    disabled={submitting}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={submitting}>
-                    {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {editingTransactionId ? 'Update Transaction' : 'Save Transaction'}
-                  </Button>
-                </DialogFooter>
-              </form>
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        resetForm()
+                        setDialogOpen(false)
+                      }}
+                      disabled={submitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={submitting}>
+                      {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {editingTransactionId ? 'Update Transaction' : 'Save Transaction'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </div>
             </DialogContent>
           </Dialog>
         </div>
@@ -1111,9 +1117,6 @@ export default function TransactionsPage() {
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <CardTitle>Your Transactions</CardTitle>
-            <CardDescription>
-              Search, filter, and page through all recorded activity quickly.
-            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">

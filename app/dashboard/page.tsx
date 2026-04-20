@@ -164,9 +164,6 @@ export default function DashboardPage() {
       <div className="space-y-4">
         <div>
           <h2 className="text-xl font-semibold tracking-tight text-[#181818]">Account Balances</h2>
-          <p className="text-sm text-muted-foreground">
-            Each balance is calculated from initial balance plus income minus expense.
-          </p>
         </div>
 
         {accountBalances.length === 0 ? (
@@ -205,7 +202,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <Card className="border-[#181818]/10 shadow-sm shadow-[#87E64B]/5">
+      {/* <Card className="border-[#181818]/10 shadow-sm shadow-[#87E64B]/5">
         <CardHeader>
           <CardTitle>How It Works</CardTitle>
           <CardDescription>
@@ -247,7 +244,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   )
 }

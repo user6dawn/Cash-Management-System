@@ -141,6 +141,11 @@ const currencyFormatter = new Intl.NumberFormat('en-NG', {
   minimumFractionDigits: 2,
 })
 
+const unitsFormatter = new Intl.NumberFormat('en-NG', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 4,
+})
+
 const dateFormatter = new Intl.DateTimeFormat('en-NG', {
   dateStyle: 'medium',
   timeStyle: 'short',
@@ -517,7 +522,7 @@ export default function InvestmentsPage() {
 
   const handleDeleteAsset = async (assetSummary: AssetSummary) => {
     const confirmed = window.confirm(
-      `Delete "${assetSummary.name}"? This may fail if transactions depend on it.`
+      `Delete "${assetSummary.name}" and its related investment transactions? This action cannot be undone.`
     )
     if (!confirmed) {
       return
@@ -528,6 +533,17 @@ export default function InvestmentsPage() {
 
     try {
       const supabase = createClient()
+      const { error: transactionsError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('asset_id', assetSummary.asset_id)
+
+      if (transactionsError) {
+        setError(transactionsError.message || 'Failed to remove related investment transactions.')
+        setDeletingAssetId(null)
+        return
+      }
+
       const { error } = await supabase
         .from('investment_assets')
         .delete()
@@ -590,195 +606,201 @@ export default function InvestmentsPage() {
               Add Investment
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Investment</DialogTitle>
-              <DialogDescription>
-                Record a buy or sell entry and create the linked account transaction.
-              </DialogDescription>
-            </DialogHeader>
+          <DialogContent className="max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-3xl overflow-hidden p-0">
+            <div className="max-h-[calc(100vh-2rem)] overflow-y-auto p-6">
+              <DialogHeader className="pr-8">
+                <DialogTitle>Add Investment</DialogTitle>
+                <DialogDescription>
+                  Record a buy or sell entry and create the linked account transaction.
+                </DialogDescription>
+              </DialogHeader>
 
-            <form className="space-y-4" onSubmit={handleCreateInvestment}>
-              {formError && (
-                <Alert variant="destructive">
-                  <AlertDescription>{formError}</AlertDescription>
-                </Alert>
-              )}
+              <form className="mt-6 space-y-6" onSubmit={handleCreateInvestment}>
+                {formError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{formError}</AlertDescription>
+                  </Alert>
+                )}
 
-              <div className="space-y-2">
-                <Label htmlFor="investment-account">Account</Label>
-                <Select value={accountId} onValueChange={setAccountId} disabled={submitting}>
-                  <SelectTrigger id="investment-account">
-                    <SelectValue placeholder="Select account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="investment-account">Account</Label>
+                    <Select value={accountId} onValueChange={setAccountId} disabled={submitting}>
+                      <SelectTrigger id="investment-account">
+                        <SelectValue placeholder="Select account" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {accounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="investment-asset-mode">Asset Mode</Label>
-                <Select
-                  value={assetMode}
-                  onValueChange={(value: 'existing' | 'new') => setAssetMode(value)}
-                  disabled={submitting}
-                >
-                  <SelectTrigger id="investment-asset-mode">
-                    <SelectValue placeholder="Choose asset mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="existing">Select Existing Asset</SelectItem>
-                    <SelectItem value="new">Create New Asset</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="investment-entry-type">Action</Label>
+                    <Select
+                      value={entryType}
+                      onValueChange={(value: 'investment_buy' | 'investment_sell') => setEntryType(value)}
+                      disabled={submitting}
+                    >
+                      <SelectTrigger id="investment-entry-type">
+                        <SelectValue placeholder="Select action" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="investment_buy">Buy</SelectItem>
+                        <SelectItem value="investment_sell">Sell</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              {assetMode === 'existing' ? (
-                <div className="space-y-2">
-                  <Label htmlFor="investment-asset">Asset</Label>
-                  <Select value={assetId} onValueChange={setAssetId} disabled={submitting}>
-                    <SelectTrigger id="investment-asset">
-                      <SelectValue placeholder="Select asset" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assets.map((asset) => (
-                        <SelectItem key={asset.id} value={asset.id}>
-                          {asset.symbol} - {asset.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-2">
+                    <Label htmlFor="investment-asset-mode">Asset Mode</Label>
+                    <Select
+                      value={assetMode}
+                      onValueChange={(value: 'existing' | 'new') => setAssetMode(value)}
+                      disabled={submitting}
+                    >
+                      <SelectTrigger id="investment-asset-mode">
+                        <SelectValue placeholder="Choose asset mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="existing">Select Existing Asset</SelectItem>
+                        <SelectItem value="new">Create New Asset</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="investment-date">Date</Label>
+                    <Input
+                      id="investment-date"
+                      type="datetime-local"
+                      value={date}
+                      onChange={(event) => setDate(event.target.value)}
+                      disabled={submitting}
+                    />
+                  </div>
                 </div>
-              ) : (
-                <>
+
+                {assetMode === 'existing' ? (
                   <div className="space-y-2">
-                    <Label htmlFor="asset-name">Asset Name</Label>
+                    <Label htmlFor="investment-asset">Asset</Label>
+                    <Select value={assetId} onValueChange={setAssetId} disabled={submitting}>
+                      <SelectTrigger id="investment-asset">
+                        <SelectValue placeholder="Select asset" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {assets.map((asset) => (
+                          <SelectItem key={asset.id} value={asset.id}>
+                            {asset.symbol} - {asset.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="asset-name">Asset Name</Label>
+                      <Input
+                        id="asset-name"
+                        value={assetName}
+                        onChange={(event) => setAssetName(event.target.value)}
+                        placeholder="Apple Inc."
+                        disabled={submitting}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="asset-symbol">Symbol</Label>
+                      <Input
+                        id="asset-symbol"
+                        value={assetSymbol}
+                        onChange={(event) => setAssetSymbol(event.target.value)}
+                        placeholder="AAPL"
+                        disabled={submitting}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="asset-type">Asset Type</Label>
+                      <Input
+                        id="asset-type"
+                        value={assetType}
+                        onChange={(event) => setAssetType(event.target.value)}
+                        placeholder="stock, crypto, etf..."
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="investment-quantity">Quantity</Label>
                     <Input
-                      id="asset-name"
-                      value={assetName}
-                      onChange={(event) => setAssetName(event.target.value)}
-                      placeholder="Apple Inc."
+                      id="investment-quantity"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.00000001"
+                      value={quantity}
+                      onChange={(event) => setQuantity(event.target.value)}
+                      placeholder="0"
                       disabled={submitting}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="asset-symbol">Symbol</Label>
+                    <Label htmlFor="investment-price">Price Per Unit</Label>
                     <Input
-                      id="asset-symbol"
-                      value={assetSymbol}
-                      onChange={(event) => setAssetSymbol(event.target.value)}
-                      placeholder="AAPL"
+                      id="investment-price"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={pricePerUnit}
+                      onChange={(event) => setPricePerUnit(event.target.value)}
+                      placeholder="0.00"
                       disabled={submitting}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="asset-type">Asset Type</Label>
+                    <Label htmlFor="investment-fees">Fees</Label>
                     <Input
-                      id="asset-type"
-                      value={assetType}
-                      onChange={(event) => setAssetType(event.target.value)}
-                      placeholder="stock, crypto, etf..."
+                      id="investment-fees"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      value={fees}
+                      onChange={(event) => setFees(event.target.value)}
+                      placeholder="0.00"
                       disabled={submitting}
                     />
                   </div>
-                </>
-              )}
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="investment-entry-type">Action</Label>
-                <Select
-                  value={entryType}
-                  onValueChange={(value: 'investment_buy' | 'investment_sell') => setEntryType(value)}
-                  disabled={submitting}
-                >
-                  <SelectTrigger id="investment-entry-type">
-                    <SelectValue placeholder="Select action" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="investment_buy">Buy</SelectItem>
-                    <SelectItem value="investment_sell">Sell</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="investment-quantity">Quantity</Label>
-                <Input
-                  id="investment-quantity"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.00000001"
-                  value={quantity}
-                  onChange={(event) => setQuantity(event.target.value)}
-                  placeholder="0"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="investment-price">Price Per Unit</Label>
-                <Input
-                  id="investment-price"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  value={pricePerUnit}
-                  onChange={(event) => setPricePerUnit(event.target.value)}
-                  placeholder="0.00"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="investment-fees">Fees</Label>
-                <Input
-                  id="investment-fees"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.01"
-                  value={fees}
-                  onChange={(event) => setFees(event.target.value)}
-                  placeholder="0.00"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="investment-date">Date</Label>
-                <Input
-                  id="investment-date"
-                  type="datetime-local"
-                  value={date}
-                  onChange={(event) => setDate(event.target.value)}
-                  disabled={submitting}
-                />
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    resetForm()
-                    setDialogOpen(false)
-                  }}
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={submitting}>
-                  {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save Investment
-                </Button>
-              </DialogFooter>
-            </form>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      resetForm()
+                      setDialogOpen(false)
+                    }}
+                    disabled={submitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={submitting}>
+                    {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save Investment
+                  </Button>
+                </DialogFooter>
+              </form>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -886,7 +908,7 @@ export default function InvestmentsPage() {
           <CardHeader className="pb-2">
             <CardDescription>Total Profit</CardDescription>
             <CardTitle
-              className={portfolioTotals.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}
+              className={portfolioTotals.profit >= 0 ? 'text-primary' : 'text-red-600'}
             >
               {currencyFormatter.format(portfolioTotals.profit)}
             </CardTitle>
@@ -981,8 +1003,8 @@ export default function InvestmentsPage() {
                     <CardTitle
                       className={`text-lg ${
                         Number(selectedAssetSummary.profit_loss) >= 0
-                          ? 'text-emerald-600'
-                          : 'text-rose-600'
+                          ? 'text-primary'
+                          : 'text-red-600'
                       }`}
                     >
                       {currencyFormatter.format(Number(selectedAssetSummary.profit_loss) || 0)}
@@ -1073,9 +1095,7 @@ export default function InvestmentsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Your Assets</CardTitle>
-          <CardDescription>
-            Every card shows the current holding period and summary for each asset.
-          </CardDescription>
+
         </CardHeader>
         <CardContent>
           {assetSummaries.length === 0 ? (
@@ -1091,66 +1111,114 @@ export default function InvestmentsPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {assetSummaries.map((asset) => (
-                <Card key={asset.asset_id} className="h-full border-slate-200/80">
-                  <CardHeader className="space-y-2">
+                <Card
+                  key={asset.asset_id}
+                  className="group h-full overflow-hidden rounded-[28px] border border-primary "
+                >
+                  <CardHeader className="space-y-4 border-b border-primary/10 ">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <CardTitle className="text-lg">{asset.name}</CardTitle>
-                        <CardDescription>
-                          {asset.symbol} | <span className="capitalize">{asset.asset_type}</span>
-                        </CardDescription>
-                      </div>
-                      <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                        {asset.holding_days} day{asset.holding_days === 1 ? '' : 's'}
+                      <div className="flex items-start gap-4">
+
+                        <div className="space-y-2">
+                          <div>
+                            <CardTitle className="text-xl">{asset.name}</CardTitle>
+                            <CardDescription className="mt-1 text-sm text-foreground/70">
+                              {asset.symbol}
+                              <span className="rounded-full bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm" >
+                              Held for {asset.holding_days} day{asset.holding_days === 1 ? '' : 's'}
+
+                              </span>
+                            </CardDescription>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+
+                          </div>
+                        </div>
                       </div>
                     </div>
                     {asset.description && (
-                      <p className="text-sm text-muted-foreground">{asset.description}</p>
+                      <p className="rounded-2xl bg-background/70 px-4 py-3 text-sm text-muted-foreground shadow-sm">
+                        {asset.description}
+                      </p>
                     )}
                   </CardHeader>
-                  <CardContent className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Units Held
-                      </p>
-                      <p className="mt-1 text-2xl font-semibold">
-                        {Number(asset.units_held) || 0}
-                      </p>
+                  <CardContent className="space-y-2 p-6 pt-3">
+                    <div className="rounded-[24px] border border-primary/15 bg-primary/10 p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-xs uppercase  text-black">
+                            Current Value
+                          </p>
+                          <p className="mt-2 text-3xl font-semibold tracking-tight text-foreground">
+                            {currencyFormatter.format(Number(asset.current_value) || 0)}
+                          </p>
+                        </div>
+                        <div
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            Number(asset.profit_loss) >= 0
+                              ? 'bg-primary/80 text-black dark:text-primary/80'
+                              : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                          }`}
+                        >
+                          {Number(asset.profit_loss) >= 0 ? 'Gain' : 'Loss'}
+                        </div>
+                      </div>
+                      <div className="mt-4 border-t border-primary/10 pt-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                          Profit / Loss
+                        </p>
+                        <p
+                          className={`mt-1 text-2xl font-semibold ${
+                            Number(asset.profit_loss) >= 0
+                              ? 'text-primary dark:text-emerald-400'
+                              : 'text-red-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {currencyFormatter.format(Number(asset.profit_loss) || 0)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Avg Price
-                      </p>
-                      <p className="mt-1 text-2xl font-semibold">
-                        {currencyFormatter.format(Number(asset.average_buy_price) || 0)}
-                      </p>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-[22px] border border-border/70 bg-background/80 p-4 shadow-sm">
+                        <p className="text-xs  tracking-[0.05em] text-muted-foreground">
+                          Units Held
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold tracking-tight">
+                          {unitsFormatter.format(Number(asset.units_held) || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-[22px] border border-border/70 bg-background/80 p-4 shadow-sm">
+                        <p className="text-xs  tracking-[0.05em] text-muted-foreground">
+                          Avg Price
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold tracking-tight">
+                          {currencyFormatter.format(Number(asset.average_buy_price) || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-[22px] border border-border/70 bg-background/80 p-4 shadow-sm">
+                        <p className="text-xs  tracking-[0.05em] text-muted-foreground">
+                          Total Invested
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold tracking-tight">
+                          {currencyFormatter.format(Number(asset.total_invested) || 0)}
+                        </p>
+                      </div>
+                      <div className="rounded-[22px] border border-border/70 bg-background/80 p-4 shadow-sm">
+                        <p className="text-xs  tracking-[0.05em] text-muted-foreground">
+                          Total Fees
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold tracking-tight">
+                          {currencyFormatter.format(Number(asset.total_fees) || 0)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Current Value
-                      </p>
-                      <p className="mt-1 text-2xl font-semibold">
-                        {currencyFormatter.format(Number(asset.current_value) || 0)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Profit / Loss
-                      </p>
-                      <p
-                        className={`mt-1 text-2xl font-semibold ${
-                          Number(asset.profit_loss) >= 0
-                            ? 'text-emerald-600'
-                            : 'text-rose-600'
-                        }`}
-                      >
-                        {currencyFormatter.format(Number(asset.profit_loss) || 0)}
-                      </p>
-                    </div>
-                    <div className="sm:col-span-2 flex flex-wrap justify-between gap-2 pt-2">
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-border/70 bg-muted/35 p-3 shadow-sm">
                       <Button
                         type="button"
                         variant="secondary"
+                        className="rounded-full  text-black shadow-sm hover:bg-primary/15"
                         onClick={() => openAssetDetails(asset)}
                       >
                         View details
@@ -1160,6 +1228,7 @@ export default function InvestmentsPage() {
                           type="button"
                           size="sm"
                           variant="outline"
+                          className="rounded-full border-primary/15 bg-background/80 hover:bg-primary/10"
                           onClick={() => openEditAssetDialog(asset)}
                           disabled={assetSubmitting || deletingAssetId === asset.asset_id}
                         >
@@ -1170,6 +1239,7 @@ export default function InvestmentsPage() {
                           type="button"
                           size="sm"
                           variant="destructive"
+                          className="rounded-full shadow-sm"
                           onClick={() => handleDeleteAsset(asset)}
                           disabled={assetSubmitting || deletingAssetId === asset.asset_id}
                         >

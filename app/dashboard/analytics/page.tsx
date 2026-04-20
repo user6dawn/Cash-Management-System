@@ -11,7 +11,7 @@ import {
   Cell,
   Pie,
   PieChart,
-  XAxis,
+  XAxis,       
   YAxis,
 } from 'recharts'
 import {
@@ -692,11 +692,11 @@ function mapPeriodMetrics(
 
 function getRecentActivityTone(type: TransactionType) {
   if (type === 'income' || type === 'transfer_in' || type === 'investment_sell') {
-    return 'text-emerald-600'
+    return 'text-primary'
   }
 
   if (type === 'expense' || type === 'transfer_out' || type === 'investment_buy') {
-    return 'text-rose-600'
+    return 'text-red-600'
   }
 
   return 'text-[#181818]'
@@ -931,10 +931,6 @@ export default function AnalyticsPage() {
             <p className="text-lg font-semibold">
               No {viewConfig.emptyStateLabel} income or expense analysis yet
             </p>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Add income or expense transactions to unlock {viewConfig.emptyStateLabel} charts,
-              detailed earned versus loss tracking, and deeper range summaries.
-            </p>
           </CardContent>
         </Card>
       )
@@ -958,7 +954,7 @@ export default function AnalyticsPage() {
               <CardDescription>{viewConfig.summaryPrefix} Earned</CardDescription>
               <CardTitle>{currencyFormatter.format(analysis.latest.income)}</CardTitle>
             </CardHeader>
-            <CardContent className="flex items-center gap-2 text-sm text-emerald-600">
+            <CardContent className="flex items-center gap-2 text-sm text-primary">
               <ArrowUpRight className="h-4 w-4" />
               {getCurrencyChangeLabel(
                 analysis.latest.income,
@@ -973,7 +969,7 @@ export default function AnalyticsPage() {
               <CardDescription>{viewConfig.summaryPrefix} Spent</CardDescription>
               <CardTitle>{currencyFormatter.format(analysis.latest.expense)}</CardTitle>
             </CardHeader>
-            <CardContent className="flex items-center gap-2 text-sm text-rose-600">
+            <CardContent className="flex items-center gap-2 text-sm text-red-600">
               <ArrowDownRight className="h-4 w-4" />
               {getCurrencyChangeLabel(
                 analysis.latest.expense,
@@ -990,7 +986,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent
               className={`flex items-center gap-2 text-sm ${
-                analysis.latest.net >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                analysis.latest.net >= 0 ? 'text-primary' : 'text-red-600'
               }`}
             >
               <PiggyBank className="h-4 w-4" />
@@ -1462,7 +1458,7 @@ export default function AnalyticsPage() {
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Earned
                   </p>
-                  <p className="mt-2 font-semibold text-emerald-600">
+                  <p className="mt-2 font-semibold text-primary">
                     {currencyFormatter.format(metric.income)}
                   </p>
                 </div>
@@ -1471,7 +1467,7 @@ export default function AnalyticsPage() {
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Spent
                   </p>
-                  <p className="mt-2 font-semibold text-rose-600">
+                  <p className="mt-2 font-semibold text-red-600">
                     {currencyFormatter.format(metric.expense)}
                   </p>
                 </div>
@@ -1482,7 +1478,7 @@ export default function AnalyticsPage() {
                   </p>
                   <p
                     className={`mt-2 font-semibold ${
-                      metric.net >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                      metric.net >= 0 ? 'text-primary' : 'text-red-600'
                     }`}
                   >
                     {currencyFormatter.format(metric.net)}
@@ -1559,7 +1555,7 @@ export default function AnalyticsPage() {
             <CardDescription>Total Income</CardDescription>
             <CardTitle>{currencyFormatter.format(totalIncome)}</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center gap-2 text-sm text-emerald-600">
+          <CardContent className="flex items-center gap-2 text-sm text-primary">
             <TrendingUp className="h-4 w-4" />
             Recorded inflows
           </CardContent>
@@ -1570,7 +1566,7 @@ export default function AnalyticsPage() {
             <CardDescription>Total Expense</CardDescription>
             <CardTitle>{currencyFormatter.format(totalExpense)}</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center gap-2 text-sm text-rose-600">
+          <CardContent className="flex items-center gap-2 text-sm text-red-600">
             <TrendingDown className="h-4 w-4" />
             Recorded outflows
           </CardContent>
@@ -1583,7 +1579,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent
             className={`flex items-center gap-2 text-sm ${
-              netSavings >= 0 ? 'text-emerald-600' : 'text-rose-600'
+              netSavings >= 0 ? 'text-primary' : 'text-red-600'
             }`}
           >
             <PiggyBank className="h-4 w-4" />
@@ -1609,7 +1605,7 @@ export default function AnalyticsPage() {
           </CardHeader>
           <CardContent
             className={`flex items-center gap-2 text-sm ${
-              totalInvestmentProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'
+              totalInvestmentProfit >= 0 ? 'text-primary' : 'text-red-600'
             }`}
           >
             <Percent className="h-4 w-4" />
@@ -1622,12 +1618,6 @@ export default function AnalyticsPage() {
         <CardHeader className="space-y-4">
           <div className="space-y-1">
             <CardTitle>Detailed Cash Flow Analysis</CardTitle>
-            <CardDescription>
-              Switch between weekly, monthly, last 3 months, and last 6 months
-              views to see how much was earned, spent, and kept over time.
-              Transfers and investment trades stay out of these cash flow charts
-              so internal movement does not distort the analysis.
-            </CardDescription>
           </div>
 
           <Tabs
@@ -1745,8 +1735,8 @@ export default function AnalyticsPage() {
                       <p
                         className={`text-sm ${
                           Number(investment.profit_loss) >= 0
-                            ? 'text-emerald-600'
-                            : 'text-rose-600'
+                            ? 'text-primary'
+                            : 'text-red-600'
                         }`}
                       >
                         {currencyFormatter.format(

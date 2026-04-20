@@ -410,9 +410,6 @@ export default function AccountsPage() {
       <Card className="border-[#181818]/10 shadow-sm shadow-[#87E64B]/5">
         <CardHeader>
           <CardTitle>Your Accounts</CardTitle>
-          <CardDescription>
-            Each account shows its type, opening balance, and live current balance.
-          </CardDescription>
         </CardHeader>
         <CardContent>
           {accounts.length === 0 ? (
