@@ -1518,12 +1518,14 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-8 p-8">
-      <div className="rounded-lg border border-[#87E64B]/100 bg-[#87E64B]/10 p-4 text-[#181818]">
-        <h1 className="text-3xl font-bold tracking-tight text-[#181818]">Analytics</h1>
-        <p className="mt-2 text-muted-foreground">
-          A deeper view of your balances, cash flow, investment value, and period-by-period
-          performance.
-        </p>
+      <div className="rounded-xl border bg-slate-50/70 p-6 text-[#181818] shadow-sm dark:bg-slate-900/40">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
+          <p className="max-w-3xl text-muted-foreground">
+            A deeper view of your balances, cash flow, investment value, and period-by-period
+            performance.
+          </p>
+        </div>
       </div>
 
       {authError && (
@@ -1539,41 +1541,56 @@ export default function AnalyticsPage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
-          <CardHeader className="pb-2">
+        <Card className="rounded-xl border bg-slate-50/70 shadow-sm transition-colors hover:bg-slate-50/90 dark:bg-slate-900/40 dark:hover:bg-slate-900/50">
+          <CardHeader className="space-y-3 pb-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              <Wallet className="h-4 w-4" />
+            </span>
             <CardDescription>Total Balance</CardDescription>
             <CardTitle>{currencyFormatter.format(totalBalance)}</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Wallet className="h-4 w-4" />
             Across all accounts
           </CardContent>
         </Card>
 
-        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
-          <CardHeader className="pb-2">
+        <Card className="rounded-xl border bg-slate-50/70 shadow-sm transition-colors hover:bg-slate-50/90 dark:bg-slate-900/40 dark:hover:bg-slate-900/50">
+          <CardHeader className="space-y-3 pb-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+              <TrendingUp className="h-4 w-4" />
+            </span>
             <CardDescription>Total Income</CardDescription>
             <CardTitle>{currencyFormatter.format(totalIncome)}</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-sm text-primary">
-            <TrendingUp className="h-4 w-4" />
             Recorded inflows
           </CardContent>
         </Card>
 
-        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
-          <CardHeader className="pb-2">
+        <Card className="rounded-xl border bg-slate-50/70 shadow-sm transition-colors hover:bg-slate-50/90 dark:bg-slate-900/40 dark:hover:bg-slate-900/50">
+          <CardHeader className="space-y-3 pb-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+              <TrendingDown className="h-4 w-4" />
+            </span>
             <CardDescription>Total Expense</CardDescription>
             <CardTitle>{currencyFormatter.format(totalExpense)}</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-sm text-red-600">
-            <TrendingDown className="h-4 w-4" />
             Recorded outflows
           </CardContent>
         </Card>
 
-        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
-          <CardHeader className="pb-2">
+        <Card className="rounded-xl border bg-slate-50/70 shadow-sm transition-colors hover:bg-slate-50/90 dark:bg-slate-900/40 dark:hover:bg-slate-900/50">
+          <CardHeader className="space-y-3 pb-2">
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-full ${
+                netSavings >= 0
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+              }`}
+            >
+              <PiggyBank className="h-4 w-4" />
+            </span>
             <CardDescription>Net Savings</CardDescription>
             <CardTitle>{currencyFormatter.format(netSavings)}</CardTitle>
           </CardHeader>
@@ -1582,24 +1599,34 @@ export default function AnalyticsPage() {
               netSavings >= 0 ? 'text-primary' : 'text-red-600'
             }`}
           >
-            <PiggyBank className="h-4 w-4" />
             Savings rate {formatSavingsRate(overallSavingsRate)}
           </CardContent>
         </Card>
 
-        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
-          <CardHeader className="pb-2">
+        <Card className="rounded-xl border bg-slate-50/70 shadow-sm transition-colors hover:bg-slate-50/90 dark:bg-slate-900/40 dark:hover:bg-slate-900/50">
+          <CardHeader className="space-y-3 pb-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+              <BarChart3 className="h-4 w-4" />
+            </span>
             <CardDescription>Investment Value</CardDescription>
             <CardTitle>{currencyFormatter.format(totalInvestmentValue)}</CardTitle>
           </CardHeader>
           <CardContent className="flex items-center gap-2 text-sm text-muted-foreground">
-            <BarChart3 className="h-4 w-4" />
             Current holdings value
           </CardContent>
         </Card>
 
-        <Card className="border-[#87E64B]/25 shadow-sm shadow-[#87E64B]/5">
-          <CardHeader className="pb-2">
+        <Card className="rounded-xl border bg-slate-50/70 shadow-sm transition-colors hover:bg-slate-50/90 dark:bg-slate-900/40 dark:hover:bg-slate-900/50">
+          <CardHeader className="space-y-3 pb-2">
+            <span
+              className={`flex h-9 w-9 items-center justify-center rounded-full ${
+                totalInvestmentProfit >= 0
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+              }`}
+            >
+              <Percent className="h-4 w-4" />
+            </span>
             <CardDescription>Investment Profit or Loss</CardDescription>
             <CardTitle>{currencyFormatter.format(totalInvestmentProfit)}</CardTitle>
           </CardHeader>
@@ -1608,7 +1635,6 @@ export default function AnalyticsPage() {
               totalInvestmentProfit >= 0 ? 'text-primary' : 'text-red-600'
             }`}
           >
-            <Percent className="h-4 w-4" />
             Live portfolio result
           </CardContent>
         </Card>
